@@ -1,155 +1,155 @@
 # DigitalUnionPay
 
-数字资产与法币资金平台。当前版本 `0.1.0-SNAPSHOT` 是服务骨架：模块边界、内部接口和进程已经分开，业务端口的实现先校验入参，再返回 `PORT_NOT_IMPLEMENTED`。
+A platform for digital assets and fiat funds. Version `0.1.0-SNAPSHOT` is a service skeleton: module boundaries, internal APIs, and processes are already split. Each business port validates its input, then returns `PORT_NOT_IMPLEMENTED`.
 
-客户余额只在清结算里变更。其它服务通过 HTTP 调用清结算，不直接改账。
+Customer balances change only inside the ledger. Other services call the ledger over HTTP.
 
-## 技术栈
+## Stack
 
-| 项 | 版本 |
+| Item | Version |
 | --- | --- |
 | Java | 21 |
 | Spring Boot | 4.0.9 |
 | Spring Cloud | 2025.1.4 |
 | Spring Cloud Alibaba | 2025.1.0.0 |
-| 注册与配置 | Nacos |
-| 限流 | Sentinel |
-| 分布式事务 | Seata |
-| 消息 | RocketMQ |
+| Registry and config | Nacos |
+| Rate limiting | Sentinel |
+| Distributed transactions | Seata |
+| Messaging | RocketMQ |
 
-父工程是 `com.digitalunionpay:digital-union-pay`。每个业务域拆成两个模块：
+The parent project is `com.digitalunionpay:digital-union-pay`. Each business domain is split into two modules:
 
-- `*-api`：契约。记录类型、枚举、端口接口和 HTTP 客户端。
-- `*-service`：独立 Spring Boot 进程。控制器把请求交给端口实现。
+- `*-api`: the contract. Records, enums, port interfaces, and HTTP clients.
+- `*-service`: a standalone Spring Boot process. Controllers hand requests to the port implementation.
 
-## 模块
+## Modules
 
-| 模块 | 进程 | 端口 | 职责 |
+| Modules | Process | Port | Responsibility |
 | --- | --- | --- | --- |
-| `dup-common` | — | — | 金额、错误码、标识校验。不放业务流程 |
-| `dup-service-support` | — | — | 链路号、Nacos、Sentinel、Seata、RocketMQ、带追踪的 HTTP 客户端 |
-| `dup-user-api` / `dup-user-service` | user-service | 8081 | 注册、会话、KYC、账户状态、继承。不改余额 |
-| `dup-ledger-api` / `dup-ledger-service` | ledger-service | 8082 | 复式分录和 TCC。资金变更的唯一入口 |
-| `dup-risk-api` / `dup-risk-service` | risk-service | 8083 | 入金、出金、兑换、交易前的限额与制裁拦截 |
-| `dup-valuation-api` / `dup-valuation-service` | valuation-service | 8084 | 汇率、金价、加密资产报价。只读 |
-| `dup-notify-api` / `dup-notify-service` | notify-service | 8085 | 站内信、短信、邮件、App Push |
-| `dup-funding-api` / `dup-funding-service` | funding-service | 8086 | 法币出入金。虚拟 IBAN 与出金申请 |
-| `dup-exchange-api` / `dup-exchange-service` | exchange-service | 8087 | 法币与稳定币兑换。锁价后双边记账 |
-| `dup-matching-api` / `dup-matching-service` | matching-service | 8088 | 订单簿。成交后的资金交给清结算 |
-| `dup-crypto-api` / `dup-crypto-service` | crypto-service | 8089 | 充值地址、确认数、托管签名 |
-| `dup-physical-api` / `dup-physical-service` | physical-service | 8090 | 实物入金。设备读数和 RFID |
-| `dup-trading-api` / `dup-trading-service` | trading-service | 8091 | 自营交易。MT5 网关，保证金和盈亏入账 |
+| `dup-common` | — | — | Money, error codes, and identifier checks. No business flow |
+| `dup-service-support` | — | — | Trace IDs, Nacos, Sentinel, Seata, RocketMQ, and traced HTTP clients |
+| `dup-user-api` / `dup-user-service` | user-service | 8081 | Registration, sessions, KYC, account status, and inheritance. Balances stay in the ledger |
+| `dup-ledger-api` / `dup-ledger-service` | ledger-service | 8082 | Double-entry journals and TCC. The only entry point for balance changes |
+| `dup-risk-api` / `dup-risk-service` | risk-service | 8083 | Limit and sanctions checks before deposit, withdrawal, exchange, and trading |
+| `dup-valuation-api` / `dup-valuation-service` | valuation-service | 8084 | FX rates, gold prices, and crypto quotes. Read only |
+| `dup-notify-api` / `dup-notify-service` | notify-service | 8085 | In-app inbox, SMS, email, and app push |
+| `dup-funding-api` / `dup-funding-service` | funding-service | 8086 | Fiat deposits and withdrawals. Virtual IBANs and withdrawal requests |
+| `dup-exchange-api` / `dup-exchange-service` | exchange-service | 8087 | Fiat and stablecoin exchange. Two-sided posting after a price lock |
+| `dup-matching-api` / `dup-matching-service` | matching-service | 8088 | Order book. Settlement of a fill goes to the ledger |
+| `dup-crypto-api` / `dup-crypto-service` | crypto-service | 8089 | Deposit addresses, confirmations, and custody signing |
+| `dup-physical-api` / `dup-physical-service` | physical-service | 8090 | Physical intake. Device readings and RFID |
+| `dup-trading-api` / `dup-trading-service` | trading-service | 8091 | Proprietary trading. MT5 gateway; margin and P&L post through the ledger |
 
-服务名定义在 `com.digitalunionpay.support.ServiceNames`，与各进程的 `spring.application.name` 一致。服务间地址形如 `http://ledger-service`，由 Nacos 与负载均衡解析。
+Service names live in `com.digitalunionpay.support.ServiceNames` and match each process `spring.application.name`. Calls between services use addresses such as `http://ledger-service`, resolved by Nacos and the load balancer.
 
-## 边界
+## Boundaries
 
-- 清结算 `TccLedger` 是唯一的记账入口：`tryFreeze` 预冻结，`confirm` 入账，`cancel` 回滚，`post` 直接入账。
-- `post` 只接受已经借贷平衡的分录。同一币种的借方最小单位合计必须等于贷方，且该币种在一笔分录里的 `scale` 必须相同。
-- 法币到账入口是 `FundingCoordinator.onFiatSettled`。顺序是 KYC、风控，再进入清结算 TCC。兑换不在出入金模块里调用。
-- 估值只提供报价，不改余额。
-- 用户模块管 KYC 和继承案件。继承通过后，资金迁移由清结算完成。
-- 加密资产的托管签名约束是 3-of-5 阈值签名，再加 HSM 二次确认。客户余额仍走清结算。
-- 通知的业务侧只提交事件，不关心通道实现。进程间通知走 RocketMQ，topic 为 `digitalunionpay-domain-events`。
+- `TccLedger` is the only posting entry point: `tryFreeze` reserves funds, `confirm` posts them, `cancel` rolls the reservation back, and `post` posts a journal directly.
+- `post` accepts a journal only when it is already balanced. For each currency, debit minor units must equal credit minor units, and every posting of that currency in the journal must use the same `scale`.
+- Fiat settlement enters through `FundingCoordinator.onFiatSettled`. The order is KYC, then risk, then the ledger TCC. Exchange stays in its own module.
+- Valuation returns quotes only.
+- The user module owns KYC and inheritance cases. After an inheritance case is approved, the ledger moves the funds.
+- Crypto custody signing is a 3-of-5 threshold signature plus a second confirmation on an HSM. Customer balances still post through the ledger.
+- Callers submit a notification event and leave channel delivery to the notify service. Cross-process notices go through RocketMQ on topic `digitalunionpay-domain-events`.
 
-## 金额
+## Money
 
-`Money` 用最小单位的整数，避免浮点。
+`Money` stores an integer in minor units so amounts never use floating point.
 
-- `minorUnits` 必须大于或等于 0。
-- `scale` 取值 0 到 18。
-- `currency` 为 3 到 10 位大写字母或数字。
+- `minorUnits` must be greater than or equal to 0.
+- `scale` is from 0 to 18.
+- `currency` is 3 to 10 uppercase letters or digits.
 
-标识字段经过 `Ids.required`，空值和空白会在进入业务前被拒绝。
+Identifier fields go through `Ids.required`. Null and blank values are rejected before business logic runs.
 
-## 状态
+## States
 
-| 领域 | 取值 |
+| Domain | Values |
 | --- | --- |
-| 用户 | `PENDING_KYC` → `ACTIVE` / `FROZEN` / `CLOSED` / `INHERITED` |
-| KYC | `NOT_SUBMITTED` → `IN_REVIEW` → `APPROVED` / `REJECTED` / `RFI`。只有 `APPROVED` 允许出入金 |
-| 账户 | `NORMAL` / `FROZEN` / `CLOSED` |
-| 继承 | `PENDING` → `UNDER_REVIEW` → `FROZEN` → `COMPLETED` / `REJECTED` |
-| 法币入金 | `PENDING_CONFIRM` → `RECEIVED` → `POSTED` / `EXCEPTION` / `REFUND` |
-| 出金 | `APPLIED` → `IN_REVIEW` → `PROCESSING` → `SUCCEEDED` / `FAILED` |
-| 分录方向 | `DEBIT` / `CREDIT` |
-| 风控动作 | `DEPOSIT` / `WITHDRAW` / `EXCHANGE` / `TRADE` |
-| 风控等级 | `LOW` / `MEDIUM` / `HIGH` |
-| 通知事件 | `DEPOSIT_POSTED`、`EXCHANGE_RESULT`、`WITHDRAWAL_RESULT`、`RISK_BLOCKED`、`KYC_RESULT`、`INHERITANCE_PROGRESS`、`MARGIN_CALL` |
-| 通知通道 | `INBOX` / `SMS` / `EMAIL` / `PUSH` |
+| User | `PENDING_KYC` → `ACTIVE` / `FROZEN` / `CLOSED` / `INHERITED` |
+| KYC | `NOT_SUBMITTED` → `IN_REVIEW` → `APPROVED` / `REJECTED` / `RFI`. Only `APPROVED` allows funding |
+| Account | `NORMAL` / `FROZEN` / `CLOSED` |
+| Inheritance | `PENDING` → `UNDER_REVIEW` → `FROZEN` → `COMPLETED` / `REJECTED` |
+| Fiat deposit | `PENDING_CONFIRM` → `RECEIVED` → `POSTED` / `EXCEPTION` / `REFUND` |
+| Withdrawal | `APPLIED` → `IN_REVIEW` → `PROCESSING` → `SUCCEEDED` / `FAILED` |
+| Journal side | `DEBIT` / `CREDIT` |
+| Risk action | `DEPOSIT` / `WITHDRAW` / `EXCHANGE` / `TRADE` |
+| Risk level | `LOW` / `MEDIUM` / `HIGH` |
+| Notify event | `DEPOSIT_POSTED`, `EXCHANGE_RESULT`, `WITHDRAWAL_RESULT`, `RISK_BLOCKED`, `KYC_RESULT`, `INHERITANCE_PROGRESS`, `MARGIN_CALL` |
+| Notify channel | `INBOX` / `SMS` / `EMAIL` / `PUSH` |
 
-错误码目前只有两个：`UNBALANCED_JOURNAL`、`PORT_NOT_IMPLEMENTED`。
+There are two error codes: `UNBALANCED_JOURNAL` and `PORT_NOT_IMPLEMENTED`.
 
-## 内部接口
+## Internal APIs
 
-这些路径供服务之间调用，前缀都是 `/internal`。
+These paths are for calls between services. Every path starts with `/internal`.
 
-| 服务 | 方法与路径 | 作用 |
+| Service | Method and path | Purpose |
 | --- | --- | --- |
-| 用户 | `GET /internal/users/{userId}/funding-allowed` | 出入金和兑换前查询 KYC 是否已通过 |
-| 用户 | `POST /internal/inheritance-cases` | 打开继承案件 |
-| 清结算 | `POST /internal/ledger/freezes` | TCC Try，按 reference 幂等预冻结 |
-| 清结算 | `POST /internal/ledger/freezes/{id}/confirm` | TCC Confirm |
-| 清结算 | `POST /internal/ledger/freezes/{id}/cancel` | TCC Cancel |
-| 清结算 | `POST /internal/ledger/journals` | 提交已平衡的复式分录 |
-| 风控 | `POST /internal/risk/checks` | 同步拦截 |
-| 估值 | `POST /internal/valuation/conversions` | 按源金额和目标币种报价 |
-| 通知 | `POST /internal/notifications` | 提交一条通知 |
-| 出入金 | `POST /internal/funding/virtual-ibans` | 签发虚拟 IBAN |
-| 出入金 | `POST /internal/funding/withdrawals` | 提交出金 |
-| 出入金 | `POST /internal/funding/fiat-settlements` | 法币到账 |
-| 兑换 | `POST /internal/exchange/locks` | 锁价 |
-| 撮合 | `POST /internal/matching/orders` | 接受订单 |
-| 加密资产 | `POST /internal/crypto/deposit-addresses` | 分配充值地址 |
-| 加密资产 | `POST /internal/crypto/signatures` | 托管签名 |
-| 实物 | `POST /internal/physical/intakes` | 记录一次实物入金 |
-| 交易 | `POST /internal/trading/market-orders` | 开市价单 |
+| User | `GET /internal/users/{userId}/funding-allowed` | Check that KYC is approved before funding or exchange |
+| User | `POST /internal/inheritance-cases` | Open an inheritance case |
+| Ledger | `POST /internal/ledger/freezes` | TCC Try. Idempotent reserve by reference |
+| Ledger | `POST /internal/ledger/freezes/{id}/confirm` | TCC Confirm |
+| Ledger | `POST /internal/ledger/freezes/{id}/cancel` | TCC Cancel |
+| Ledger | `POST /internal/ledger/journals` | Submit a balanced double-entry journal |
+| Risk | `POST /internal/risk/checks` | Synchronous gate |
+| Valuation | `POST /internal/valuation/conversions` | Quote from a source amount into a target currency |
+| Notify | `POST /internal/notifications` | Submit one notification |
+| Funding | `POST /internal/funding/virtual-ibans` | Issue a virtual IBAN |
+| Funding | `POST /internal/funding/withdrawals` | Submit a withdrawal |
+| Funding | `POST /internal/funding/fiat-settlements` | Record fiat settlement |
+| Exchange | `POST /internal/exchange/locks` | Lock a price |
+| Matching | `POST /internal/matching/orders` | Accept an order |
+| Crypto | `POST /internal/crypto/deposit-addresses` | Allocate a deposit address |
+| Crypto | `POST /internal/crypto/signatures` | Custody signature |
+| Physical | `POST /internal/physical/intakes` | Record one physical intake |
+| Trading | `POST /internal/trading/market-orders` | Open a market order |
 
-入站请求没有 `X-Trace-Id` 时，过滤器会生成一个 UUID，写入 MDC 和响应头。出站 HTTP 调用沿用同一条链路号。日志级别模式是 `%5p [trace:%X{X-Trace-Id:-}]`。
+When an inbound request has no `X-Trace-Id`, the filter creates a UUID, stores it in the MDC, and writes it back on the response. Outbound HTTP calls keep that same trace ID. The log level pattern is `%5p [trace:%X{X-Trace-Id:-}]`.
 
-健康检查暴露在 `/actuator/health`。
+Health is exposed at `/actuator/health`.
 
-## 运行依赖
+## Runtime dependencies
 
-非 `test` profile 会导入 `classpath:digitalunionpay-nacos.yml`，以及可选的 `nacos:<服务名>.yaml`。
+Any profile other than `test` imports `classpath:digitalunionpay-nacos.yml` and the optional `nacos:<service-name>.yaml`.
 
-| 变量 | 默认值 | 用途 |
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `NACOS_ADDR` | `127.0.0.1:8848` | 注册中心和配置中心 |
-| `NACOS_USERNAME` | `nacos` | Nacos 用户名 |
-| `NACOS_PASSWORD` | `nacos` | Nacos 密码 |
-| `SENTINEL_DASHBOARD` | `127.0.0.1:8080` | Sentinel 控制台 |
+| `NACOS_ADDR` | `127.0.0.1:8848` | Registry and config server |
+| `NACOS_USERNAME` | `nacos` | Nacos username |
+| `NACOS_PASSWORD` | `nacos` | Nacos password |
+| `SENTINEL_DASHBOARD` | `127.0.0.1:8080` | Sentinel dashboard |
 | `ROCKETMQ_NAMESRV` | `127.0.0.1:9876` | RocketMQ NameServer |
-| `SEATA_ADDR` | `127.0.0.1:7091` | Seata TC |
+| `SEATA_ADDR` | `127.0.0.1:7091` | Seata transaction coordinator |
 
-Seata 事务组是 `digitalunionpay-tx-group`，注册到 Nacos 的 `SEATA_GROUP`。数据源代理默认关闭（`enable-auto-data-source-proxy: false`）。
+The Seata transaction group is `digitalunionpay-tx-group`, registered in Nacos group `SEATA_GROUP`. The data-source proxy is off by default (`enable-auto-data-source-proxy: false`).
 
-`test` profile 关闭 Nacos、Sentinel、Seata 和 RocketMQ 健康检查，供上下文测试使用。
+The `test` profile turns off Nacos, Sentinel, Seata, and the RocketMQ health check so context tests can start.
 
-## 构建与测试
+## Build and test
 
-在仓库根目录执行：
+From the repository root:
 
 ```bash
 mvn test
 ```
 
-只构建一个服务及其依赖：
+Build one service and the modules it depends on:
 
 ```bash
 mvn -pl dup-ledger-service -am test
 ```
 
-启动一个进程（需要上表中的基础设施，或改用已准备好的 Nacos 配置）：
+Start one process. The infrastructure in the table above must be running, or Nacos must already hold the service config:
 
 ```bash
 mvn -pl dup-ledger-service spring-boot:run
 ```
 
-各服务测试目前验证 Spring 上下文可以在 `test` profile 下启动。业务端口尚未接入真实渠道、账本存储或外部行情。
+Service tests currently check that the Spring context starts under the `test` profile. Business ports are not yet wired to a real channel, a ledger store, or an external price feed.
 
-## 现状
+## Current state
 
-每个服务的 `internal` 包里是 `Skeleton*` 实现。它们检查空入参和尚未注入的协作者，然后抛出 `BusinessException(PORT_NOT_IMPLEMENTED)`。清结算的 `post` 会先调用 `JournalCommand.requireBalanced()`，不平衡的分录在未实现存储之前就会被拒绝。
+Each service keeps a `Skeleton*` implementation in its `internal` package. The skeleton checks for null input and for collaborators that were not injected, then throws `BusinessException(PORT_NOT_IMPLEMENTED)`. Ledger `post` calls `JournalCommand.requireBalanced()` first, so an unbalanced journal is rejected before any store exists.
 
-后续实现应替换这些骨架，保持现有端口和路径不变。
+Later implementations should replace these skeletons and keep the current ports and paths.
