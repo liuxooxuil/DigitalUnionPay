@@ -1,0 +1,45 @@
+spring:
+  cloud:
+    nacos:
+      username: ${NACOS_USERNAME:nacos}
+      password: ${NACOS_PASSWORD:nacos}
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        fail-fast: false
+      config:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        file-extension: yaml
+    sentinel:
+      eager: false
+      filter:
+        enabled: true
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:127.0.0.1:8080}
+    stream:
+      rocketmq:
+        binder:
+          name-server: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
+      bindings:
+        domainEvents-out-0:
+          destination: digitalunionpay-domain-events
+          content-type: application/json
+seata:
+  enabled: true
+  application-id: ${spring.application.name}
+  tx-service-group: digitalunionpay-tx-group
+  enable-auto-data-source-proxy: false
+  service:
+    vgroup-mapping:
+      digitalunionpay-tx-group: default
+    grouplist:
+      default: ${SEATA_ADDR:127.0.0.1:7091}
+  registry:
+    type: nacos
+    nacos:
+      application: seata-server
+      server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+      group: SEATA_GROUP
+      username: ${NACOS_USERNAME:nacos}
+      password: ${NACOS_PASSWORD:nacos}
+  config:
+    type: file

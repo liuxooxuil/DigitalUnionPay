@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: user-service
+server:
+  port: 8081
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+logging:
+  pattern:
+    level: "%5p [trace:%X{X-Trace-Id:-}]"
+---
+spring:
+  config:
+    activate:
+      on-profile: "!test"
+    import:
+      - classpath:digitalunionpay-nacos.yml
+      - optional:nacos:user-service.yaml
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+      config:
+        enabled: false
+        import-check:
+          enabled: false
+    sentinel:
+      enabled: false
+    stream:
+      function:
+        autodetect: false
+seata:
+  enabled: false
+management:
+  health:
+    rocketmq:
+      enabled: false

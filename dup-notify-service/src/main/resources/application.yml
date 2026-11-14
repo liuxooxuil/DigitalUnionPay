@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: notify-service
+server:
+  port: 8085
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+logging:
+  pattern:
+    level: "%5p [trace:%X{X-Trace-Id:-}]"
+---
+spring:
+  config:
+    activate:
+      on-profile: "!test"
+    import:
+      - classpath:digitalunionpay-nacos.yml
+      - optional:nacos:notify-service.yaml
+  cloud:
+    function:
+      definition: domainEventConsumer
+    stream:
+      bindings:
+        domainEventConsumer-in-0:
+          destination: digitalunionpay-domain-events
+          group: notify-service
+          content-type: application/json
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+      config:
+        enabled: false
+        import-check:
+          enabled: false
+    sentinel:
+      enabled: false
+    stream:
+      function:
+        autodetect: false
+seata:
+  enabled: false
+management:
+  health:
+    rocketmq:
+      enabled: false
