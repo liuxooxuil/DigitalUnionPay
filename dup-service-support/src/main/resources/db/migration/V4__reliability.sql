@@ -1,0 +1,15 @@
+CREATE TABLE IF NOT EXISTS dup_audit (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  action VARCHAR(64) NOT NULL,
+  subject VARCHAR(128) NOT NULL,
+  detail VARCHAR(4000) NOT NULL,
+  trace_id VARCHAR(64) NOT NULL,
+  created_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS dup_inbox (
+  event_id VARCHAR(128) NOT NULL PRIMARY KEY,
+  event_type VARCHAR(128) NOT NULL,
+  event_version INT NOT NULL,
+  consumed_at DATETIME NOT NULL
+);

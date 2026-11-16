@@ -12,3 +12,4 @@ data:
   SEATA_ADDR: seata:7091
   SENTINEL_DASHBOARD: sentinel:8080
   OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+  USER_SERVICE_URI: http://user-service:8081

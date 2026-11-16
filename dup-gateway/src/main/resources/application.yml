@@ -1,0 +1,34 @@
+# 边缘网关。外部只进 8070。Nacos 控制台占用 8080，所以网关不使用 8080。
+spring:
+  application:
+    name: edge-gateway
+server:
+  port: 8070
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+dup:
+  auth:
+    jwt-secret: ${DUP_AUTH_JWT_SECRET:DigitalUnionPayJwtSecretKey32B!!}
+  edge:
+    secret: ${DUP_EDGE_SECRET:DigitalUnionPayEdgeSecretKey32!!}
+    deny-ips: ${DUP_EDGE_DENY_IPS:}
+    permits: ${DUP_EDGE_PERMITS:30}
+    window-millis: ${DUP_EDGE_WINDOW_MILLIS:10000}
+  service-auth:
+    secret: ${DUP_SERVICE_AUTH_SECRET:DigitalUnionPayServiceSecretKey32}
+  user-service-uri: ${USER_SERVICE_URI:http://127.0.0.1:8081}
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+server:
+  port: 0
+dup:
+  edge:
+    deny-ips: 203.0.113.8
+    permits: 1000
+  user-service-uri: http://127.0.0.1:9

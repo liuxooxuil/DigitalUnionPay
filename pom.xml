@@ -23,6 +23,7 @@
   <modules>
     <module>dup-common</module>
     <module>dup-service-support</module>
+    <module>dup-gateway</module>
     <module>dup-ledger-api</module>
     <module>dup-notify-api</module>
     <module>dup-risk-api</module>

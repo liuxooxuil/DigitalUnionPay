@@ -17,5 +17,9 @@ public enum ErrorCode {
   /** 同一个幂等键已经执行过。 */
   CONFLICT,
   /** 依赖的服务或消息通道暂时不可用。 */
-  UNAVAILABLE
+  UNAVAILABLE,
+  /** 账户可用余额不够完成本次扣减或冻结。 */
+  INSUFFICIENT_FUNDS,
+  /** 调用频率超过边缘或进程限额。 */
+  RATE_LIMITED
 }

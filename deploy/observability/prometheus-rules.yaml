@@ -1,0 +1,38 @@
+# 规则文件。仓库没有部署 Prometheus，这些表达式对应 Micrometer 的下划线名称。
+groups:
+  - name: digitalunionpay-ledger
+    rules:
+      - alert: LedgerNegativeBalance
+        expr: dup_ledger_negative > 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: A ledger account has negative available or frozen balance
+      - alert: LedgerUnbalanced
+        expr: dup_ledger_unbalanced > 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: A journal's debit and credit minor units differ
+      - alert: LedgerFreezeDrift
+        expr: dup_ledger_freeze_drift > 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: Frozen balance does not match TRIED freezes
+      - alert: OutboxBacklog
+        expr: dup_outbox_backlog > 100
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: Unsent outbox rows are above 100
+      - alert: LedgerDuplicatePosts
+        expr: increase(dup_ledger_duplicate_total[5m]) > 0
+        labels:
+          severity: ticket
+        annotations:
+          summary: A business reference was posted again

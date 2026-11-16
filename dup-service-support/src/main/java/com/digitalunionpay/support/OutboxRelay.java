@@ -19,8 +19,11 @@ public final class OutboxRelay {
 
   private final Clock clock;
 
-  /** 接入消息表、发送器和死信表。 */
-  public OutboxRelay(JdbcTemplate jdbc, DomainEvents events, DeadLetters deadLetters, Clock clock) {
+  private final PlatformMeters meters;
+
+  /** 接入消息表、发送器、死信表和慢调用计数。 */
+  public OutboxRelay(
+      JdbcTemplate jdbc, DomainEvents events, DeadLetters deadLetters, Clock clock, PlatformMeters meters) {
     if (jdbc == null || events == null || deadLetters == null) {
       throw new IllegalArgumentException("relay");
     }
@@ -28,14 +31,19 @@ public final class OutboxRelay {
     this.events = events;
     this.deadLetters = deadLetters;
     this.clock = clock == null ? Clock.systemUTC() : clock;
+    this.meters = meters;
   }
 
-  /** 每次最多投递 50 条未发送记录。单条失败不影响后面的记录。 */
+  /** 每次最多投递 50 条未发送记录。单条失败不影响后面的记录。查询超过 200 毫秒记一次慢调用。 */
   @Scheduled(fixedDelay = 2000)
   public void publishPending() {
+    long started = System.nanoTime();
     List<Row> rows = jdbc.query(
         "SELECT id, event_type, payload, idempotency_key, attempts FROM dup_outbox WHERE sent_at IS NULL ORDER BY created_at LIMIT 50",
         (rs, row) -> new Row(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getInt(5)));
+    if (meters != null) {
+      meters.slow((System.nanoTime() - started) / 1_000_000L, 200L);
+    }
     for (Row pending : rows) {
       deliver(pending);
     }

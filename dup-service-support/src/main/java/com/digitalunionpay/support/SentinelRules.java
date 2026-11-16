@@ -4,6 +4,8 @@ import com.alibaba.csp.sentinel.Entry;
 import com.alibaba.csp.sentinel.SphU;
 import com.alibaba.csp.sentinel.slots.block.BlockException;
 import com.alibaba.csp.sentinel.slots.block.RuleConstant;
+import com.alibaba.csp.sentinel.slots.block.degrade.DegradeRule;
+import com.alibaba.csp.sentinel.slots.block.degrade.DegradeRuleManager;
 import com.alibaba.csp.sentinel.slots.block.flow.FlowRule;
 import com.alibaba.csp.sentinel.slots.block.flow.FlowRuleManager;
 import com.digitalunionpay.common.error.ErrorCode;
@@ -45,6 +47,12 @@ final class SentinelRules extends OncePerRequestFilter implements ApplicationRun
     FlowRule inbound = rule(INBOUND, inboundQps);
     FlowRule user = rule("user-service", userServiceQps);
     FlowRuleManager.loadRules(List.of(inbound, user));
+    DegradeRule degrade = new DegradeRule("user-service");
+    degrade.setGrade(RuleConstant.DEGRADE_GRADE_EXCEPTION_RATIO);
+    degrade.setCount(0.5);
+    degrade.setTimeWindow(10);
+    degrade.setMinRequestAmount(5);
+    DegradeRuleManager.loadRules(List.of(degrade));
   }
 
   /** 入站请求申请 inbound 资源。被限流时返回 503。 */

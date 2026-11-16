@@ -1,0 +1,31 @@
+{
+  "title": "DigitalUnionPay ledger",
+  "uid": "dup-ledger",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Negative balances",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "dup_ledger_negative", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Unbalanced journals",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "dup_ledger_unbalanced", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Freeze drift",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "targets": [{"expr": "dup_ledger_freeze_drift", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Outbox backlog",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "targets": [{"expr": "dup_outbox_backlog", "refId": "A"}]
+    }
+  ]
+}

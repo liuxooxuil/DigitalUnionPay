@@ -3,7 +3,7 @@ package com.digitalunionpay.user.auth;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
-/** 把现有 PBKDF2 摘要接到 Spring Security。库里的 iterations$salt$hash 格式不变。 */
+/** 新密码写 Argon2id。库里已有的 PBKDF2 摘要仍能登录。 */
 @Component
 public final class StoredPasswordEncoder implements PasswordEncoder {
 

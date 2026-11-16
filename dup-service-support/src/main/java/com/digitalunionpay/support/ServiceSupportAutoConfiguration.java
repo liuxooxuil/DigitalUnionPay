@@ -1,5 +1,9 @@
 package com.digitalunionpay.support;
 
+import com.digitalunionpay.common.RequestHeaders;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.util.function.Consumer;
 import org.springframework.beans.factory.ObjectProvider;
@@ -126,8 +130,9 @@ public class ServiceSupportAutoConfiguration {
   /** 测试剖面关掉定时投递，避免去连 RocketMQ。 */
   @Bean
   @ConditionalOnProperty(name = "dup.outbox.publish", havingValue = "true", matchIfMissing = true)
-  OutboxRelay outboxRelay(JdbcTemplate jdbc, DomainEvents events, DeadLetters deadLetters, Clock utcClock) {
-    return new OutboxRelay(jdbc, events, deadLetters, utcClock);
+  OutboxRelay outboxRelay(
+      JdbcTemplate jdbc, DomainEvents events, DeadLetters deadLetters, Clock utcClock, PlatformMeters meters) {
+    return new OutboxRelay(jdbc, events, deadLetters, utcClock, meters);
   }
 
   /** 入站 QPS 和发往 user-service 的 QPS。Sentinel 关闭时规则不装。 */
@@ -138,15 +143,54 @@ public class ServiceSupportAutoConfiguration {
     return new SentinelRules(inboundQps, userServiceQps);
   }
 
-  /** 只有显式声明消费者时才订阅。缺事件类型的消息进入死信表并抛出，交给代理重试后进队列死信。 */
+  /** 本地消息积压。Prometheus 抓 dup_outbox_backlog。 */
+  @Bean
+  PlatformMeters platformMeters(ObjectProvider<MeterRegistry> registries, JdbcTemplate jdbc) {
+    MeterRegistry registry = registries.getIfAvailable();
+    if (registry != null) {
+      Gauge.builder(PlatformMeters.OUTBOX_BACKLOG, jdbc, PlatformMeters::backlog).register(registry);
+    }
+    return new PlatformMeters(registry);
+  }
+
+  /** 资金动作审计。调用方要放在业务事务里面。 */
+  @Bean
+  AuditLog auditLog(JdbcTemplate jdbc, Clock utcClock) {
+    return new AuditLog(jdbc, utcClock);
+  }
+
+  /** 消费去重。 */
+  @Bean
+  Inbox inbox(JdbcTemplate jdbc, Clock utcClock) {
+    return new Inbox(jdbc, utcClock);
+  }
+
+  /** 配置里的 32 字节数据密钥。这不是 HSM。 */
+  @Bean
+  FieldCipher fieldCipher(@Value("${dup.crypto.key:DigitalUnionPayAes256DataKey!!!!}") String key) {
+    return new FieldCipher(key.getBytes(StandardCharsets.UTF_8));
+  }
+
+  /** 只有显式声明消费者时才订阅。缺类型或版本过高进死信。同一幂等键只处理一次。 */
   @Bean
   @ConditionalOnProperty(name = "spring.cloud.function.definition", havingValue = "domainEvents")
-  Consumer<Message<String>> domainEvents(DeadLetters deadLetters) {
+  Consumer<Message<String>> domainEvents(DeadLetters deadLetters, Inbox inbox) {
     return message -> {
       Object type = message.getHeaders().get("eventType");
-      if (type == null || type.toString().isBlank()) {
+      String typeText = type == null ? "" : type.toString();
+      if (typeText.isBlank()) {
         deadLetters.park("domainEvents", String.valueOf(message.getPayload()), "type");
         throw new IllegalArgumentException("type");
+      }
+      Object versionHeader = message.getHeaders().get("eventVersion");
+      int version = versionHeader instanceof Number number ? number.intValue() : DomainEvents.EVENT_VERSION;
+      if (version > DomainEvents.EVENT_VERSION) {
+        deadLetters.park(typeText, String.valueOf(message.getPayload()), "version");
+        throw new IllegalArgumentException("version");
+      }
+      Object key = message.getHeaders().get(RequestHeaders.IDEMPOTENCY_KEY);
+      if (key != null && !key.toString().isBlank() && !inbox.first(key.toString(), typeText, version)) {
+        return;
       }
     };
   }

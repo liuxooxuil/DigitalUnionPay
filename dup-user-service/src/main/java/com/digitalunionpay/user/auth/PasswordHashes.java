@@ -2,38 +2,37 @@ package com.digitalunionpay.user.auth;
 
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.util.HexFormat;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
+import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 
-/** 密码用 PBKDF2 保存。存储格式是迭代次数、盐和摘要，用 $ 分开。 */
+/** 新密码用 Argon2id。已有的 PBKDF2 摘要仍能校验，种子管理员不用重新哈希。 */
 public final class PasswordHashes {
-
-  private static final int ITERATIONS = 120_000;
-
-  private static final int SALT_BYTES = 16;
 
   private static final int HASH_BYTES = 32;
 
-  private static final SecureRandom RANDOM = new SecureRandom();
+  private static final Argon2PasswordEncoder ARGON = Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8();
 
   /** 禁止实例化。 */
   private PasswordHashes() {
   }
 
-  /** 生成带随机盐的密码摘要。 */
+  /** 生成 Argon2id 摘要。 */
   public static String hash(String password) {
-    byte[] salt = new byte[SALT_BYTES];
-    RANDOM.nextBytes(salt);
-    byte[] digest = pbkdf2(password, salt, ITERATIONS);
-    return ITERATIONS + "$" + HexFormat.of().formatHex(salt) + "$" + HexFormat.of().formatHex(digest);
+    if (password == null) {
+      throw new IllegalArgumentException("password");
+    }
+    return ARGON.encode(password);
   }
 
-  /** 摘要格式不对或密码不一致时返回 false。 */
+  /** Argon2id 走新格式。三段 iterations$salt$hash 仍按 PBKDF2 校验。 */
   public static boolean matches(String password, String stored) {
     if (password == null || stored == null) {
       return false;
+    }
+    if (stored.startsWith("$argon2id$")) {
+      return ARGON.matches(password, stored);
     }
     String[] parts = stored.split("\\$");
     if (parts.length != 3) {

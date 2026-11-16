@@ -14,9 +14,17 @@ import com.digitalunionpay.ledger.mapper.FreezeMapper;
 import com.digitalunionpay.ledger.mapper.JournalMapper;
 import com.digitalunionpay.ledger.mapper.PostingMapper;
 import com.digitalunionpay.ledger.service.LedgerService;
+import com.digitalunionpay.support.Abac;
+import com.digitalunionpay.support.AccessContext;
+import com.digitalunionpay.support.AuditLog;
 import com.digitalunionpay.support.IdempotencyStore;
 import com.digitalunionpay.support.Outbox;
+import com.digitalunionpay.support.PlatformMeters;
 import com.digitalunionpay.support.TccFence;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,20 +44,39 @@ public class LedgerServiceImpl implements LedgerService {
 
   private final Outbox outbox;
 
-  /** 接入账本表、幂等、栅栏和本地消息。 */
+  private final AccountBalances balances;
+
+  private final AuditLog audit;
+
+  private final PlatformMeters meters;
+
+  private final JwtDecoder decoder;
+
+  private final JdbcTemplate jdbc;
+
+  /** 接入账本表、余额、幂等、栅栏、审计和本地消息。 */
   public LedgerServiceImpl(
       FreezeMapper freezeMapper,
       JournalMapper journalMapper,
       PostingMapper postingMapper,
       IdempotencyStore idempotency,
       TccFence fence,
-      Outbox outbox) {
+      Outbox outbox,
+      JdbcTemplate jdbc,
+      AuditLog audit,
+      PlatformMeters meters,
+      JwtDecoder decoder) {
     this.freezeMapper = freezeMapper;
     this.journalMapper = journalMapper;
     this.postingMapper = postingMapper;
     this.idempotency = idempotency;
     this.fence = fence;
     this.outbox = outbox;
+    this.jdbc = jdbc;
+    this.balances = new AccountBalances(jdbc, meters);
+    this.audit = audit;
+    this.meters = meters;
+    this.decoder = decoder;
   }
 
   /** 按 reference 幂等预冻结。Cancel 已经先到时按悬挂拒绝。 */
@@ -71,8 +98,11 @@ public class LedgerServiceImpl implements LedgerService {
     row.setScale(request.amount().scale());
     row.setCurrency(request.amount().currency());
     row.setStatus("TRIED");
+    guard(request.accountId(), request.amount().currency());
+    balances.reserve(request.accountId(), request.amount().currency(), request.amount().scale(), request.amount().minorUnits());
     freezeMapper.insert(row);
     outbox.append("ledger.freeze", request.reference(), request.reference());
+    audit.record("ledger.freeze", request.accountId(), request.reference());
     return new FreezeId(request.reference());
   }
 
@@ -83,7 +113,11 @@ public class LedgerServiceImpl implements LedgerService {
     if (freezeId == null) {
       throw new IllegalArgumentException("freezeId");
     }
+    FreezeEntity row = findFreeze(freezeId.value());
     fence.confirm(freezeId.value());
+    if (row != null && "TRIED".equals(row.getStatus())) {
+      balances.capture(row.getAccountId(), row.getCurrency(), row.getScale(), row.getMinorUnits());
+    }
     freezeMapper.update(
         null,
         new LambdaUpdateWrapper<FreezeEntity>()
@@ -98,7 +132,11 @@ public class LedgerServiceImpl implements LedgerService {
     if (freezeId == null) {
       throw new IllegalArgumentException("freezeId");
     }
+    FreezeEntity row = findFreeze(freezeId.value());
     fence.cancel(freezeId.value());
+    if (row != null && "TRIED".equals(row.getStatus())) {
+      balances.release(row.getAccountId(), row.getCurrency(), row.getScale(), row.getMinorUnits());
+    }
     freezeMapper.update(
         null,
         new LambdaUpdateWrapper<FreezeEntity>()
@@ -115,6 +153,7 @@ public class LedgerServiceImpl implements LedgerService {
     }
     command.requireBalanced();
     if (!idempotency.claim("journal", command.reference())) {
+      meters.mark(PlatformMeters.LEDGER_DUPLICATE);
       throw new BusinessException(ErrorCode.CONFLICT, command.reference());
     }
     JournalEntity journal = new JournalEntity();
@@ -130,7 +169,59 @@ public class LedgerServiceImpl implements LedgerService {
       row.setScale(posting.amount().scale());
       row.setCurrency(posting.amount().currency());
       postingMapper.insert(row);
+      guard(posting.accountId(), posting.amount().currency());
+      try {
+        balances.apply(
+            posting.accountId(),
+            posting.amount().currency(),
+            posting.amount().scale(),
+            "DEBIT".equals(posting.side().name()),
+            posting.amount().minorUnits());
+      } catch (BusinessException exception) {
+        if (exception.code() == ErrorCode.INSUFFICIENT_FUNDS) {
+          meters.mark(PlatformMeters.LEDGER_INSUFFICIENT);
+        }
+        throw exception;
+      }
     }
     outbox.append("journal.posted", command.reference(), command.reference());
+    audit.record("journal.posted", command.reference(), command.reference());
+  }
+
+  /** 当前 token 里的 uid 必须是账户归属人。没有 token 或没有归属人时放行服务间入账。 */
+  private void guard(String accountId, String currency) {
+    String token = AccessContext.get();
+    if (token == null || token.isBlank()) {
+      return;
+    }
+    String actor;
+    try {
+      Jwt jwt = decoder.decode(token);
+      actor = jwt.getClaimAsString("uid");
+    } catch (JwtException exception) {
+      return;
+    }
+    if (!Abac.permits(actor, balances.owner(accountId, currency))) {
+      throw new BusinessException(ErrorCode.FORBIDDEN, accountId);
+    }
+  }
+
+  /** 按业务单号找冻结。没有时返回 null。 */
+  private FreezeEntity findFreeze(String reference) {
+    return jdbc.query(
+        "SELECT account_id, minor_units, scale, currency, status FROM ledger_freeze WHERE reference = ?",
+        rs -> {
+          if (!rs.next()) {
+            return null;
+          }
+          FreezeEntity row = new FreezeEntity();
+          row.setAccountId(rs.getString(1));
+          row.setMinorUnits(rs.getLong(2));
+          row.setScale(rs.getInt(3));
+          row.setCurrency(rs.getString(4));
+          row.setStatus(rs.getString(5));
+          return row;
+        },
+        reference);
   }
 }

@@ -12,6 +12,7 @@ class PasswordHashesTest {
   @Test
   void matchesThePasswordThatWasHashed() {
     String stored = PasswordHashes.hash("secret");
+    assertTrue(stored.startsWith("$argon2id$"));
     assertTrue(PasswordHashes.matches("secret", stored));
     assertFalse(PasswordHashes.matches("other", stored));
     assertFalse(PasswordHashes.matches("secret", "not-a-hash"));

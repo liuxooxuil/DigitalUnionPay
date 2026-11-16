@@ -1,0 +1,17 @@
+# 收集器配置。仓库没有启动 Jaeger 或这个收集器。
+# 业务进程只有在 OTLP_ENDPOINT 指向这里时才导出链路。
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/jaeger]

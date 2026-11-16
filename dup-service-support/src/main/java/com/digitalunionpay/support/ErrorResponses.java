@@ -32,7 +32,7 @@ final class ErrorResponses {
     JSON.writeValue(response.getOutputStream(), body(code, message));
   }
 
-  /** 未实现 501，未登录 401，无权限 403，校验 400，冲突 409，依赖不可用 503，其余 422。 */
+  /** 未实现 501，未登录 401，无权限 403，校验 400，冲突 409，限流 429，依赖不可用 503，其余 422。 */
   private static int status(ErrorCode code) {
     return switch (code) {
       case PORT_NOT_IMPLEMENTED -> 501;
@@ -40,6 +40,7 @@ final class ErrorResponses {
       case FORBIDDEN -> 403;
       case BAD_REQUEST, VALIDATION -> 400;
       case CONFLICT -> 409;
+      case RATE_LIMITED -> 429;
       case UNAVAILABLE -> 503;
       default -> 422;
     };
