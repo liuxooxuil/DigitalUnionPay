@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: digitalunionpay
+  namespace: digitalunionpay
+data:
+  MYSQL_URL: "jdbc:mysql://mysql:3306/digital_union_pay?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC"
+  MYSQL_USERNAME: root
+  NACOS_ADDR: nacos:8848
+  NACOS_USERNAME: nacos
+  ROCKETMQ_NAMESRV: rocketmq:9876
+  SEATA_ADDR: seata:7091
+  SENTINEL_DASHBOARD: sentinel:8080
+  OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
