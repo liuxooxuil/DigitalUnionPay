@@ -8,17 +8,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.digitalunionpay.ledger.service.impl.LedgerServiceImpl;
 import com.digitalunionpay.support.TraceIdFilter;
+import jakarta.servlet.Filter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
-/** 检查清结算上下文、平衡分录的 501，以及不平衡分录的 422。 */
+/** 检查清结算上下文、同事务入账、重复入账、空回滚悬挂，以及不平衡分录的 422。 */
 @SpringBootTest
 @ActiveProfiles("test")
 class LedgerServiceContextTest {
@@ -38,14 +40,26 @@ class LedgerServiceContextTest {
   WebApplicationContext context;
 
   @Autowired
+  JdbcTemplate jdbc;
+
+  @Autowired
   TraceIdFilter traceIdFilter;
+
+  @Autowired
+  Filter springSecurityFilterChain;
 
   private MockMvc mvc;
 
-  /** 装上链路号过滤器。 */
+  /** 装上链路号和 Spring Security，并清掉上一笔用例留下的账和幂等键。 */
   @BeforeEach
   void setUp() {
-    mvc = MockMvcBuilders.webAppContextSetup(context).addFilters(traceIdFilter).build();
+    mvc = MockMvcBuilders.webAppContextSetup(context).addFilters(traceIdFilter, springSecurityFilterChain).build();
+    jdbc.update("DELETE FROM ledger_posting");
+    jdbc.update("DELETE FROM ledger_journal");
+    jdbc.update("DELETE FROM ledger_freeze");
+    jdbc.update("DELETE FROM dup_outbox");
+    jdbc.update("DELETE FROM dup_idempotency");
+    jdbc.update("DELETE FROM dup_tcc_fence");
   }
 
   /** 确认账本端口是本地占位实现。 */
@@ -54,17 +68,54 @@ class LedgerServiceContextTest {
     assertInstanceOf(LedgerServiceImpl.class, ledger);
   }
 
-  /** 平衡分录经 HTTP 提交后返回 501，并回写原链路号。 */
+  /** 平衡分录、幂等键和本地消息在同一次提交里写成。 */
   @Test
-  void balancedJournalCrossesTheHttpBoundaryAndStaysUnimplemented() throws Exception {
+  void balancedJournalIsPostedWithItsOutboxRow() throws Exception {
     mvc.perform(post(LedgerPaths.JOURNALS)
             .contentType(MediaType.APPLICATION_JSON)
             .header(TraceIdFilter.HEADER, "trace-1")
             .content(BALANCED))
-        .andExpect(status().is(501))
-        .andExpect(header().string(TraceIdFilter.HEADER, "trace-1"))
-        .andExpect(jsonPath("$.code").value("PORT_NOT_IMPLEMENTED"))
-        .andExpect(jsonPath("$.traceId").value("trace-1"));
+        .andExpect(status().isOk())
+        .andExpect(header().string(TraceIdFilter.HEADER, "trace-1"));
+    Integer journals = jdbc.queryForObject(
+        "SELECT COUNT(*) FROM ledger_journal WHERE reference = 'ref-1'", Integer.class);
+    Integer postings = jdbc.queryForObject(
+        "SELECT COUNT(*) FROM ledger_posting WHERE journal_id IN (SELECT id FROM ledger_journal WHERE reference = 'ref-1')",
+        Integer.class);
+    Integer messages = jdbc.queryForObject(
+        "SELECT COUNT(*) FROM dup_outbox WHERE idempotency_key = 'ref-1'", Integer.class);
+    org.junit.jupiter.api.Assertions.assertEquals(1, journals);
+    org.junit.jupiter.api.Assertions.assertEquals(2, postings);
+    org.junit.jupiter.api.Assertions.assertEquals(1, messages);
+  }
+
+  /** 同一个 reference 再提交一次返回冲突，不再插第二笔分录。 */
+  @Test
+  void duplicateJournalIsConflict() throws Exception {
+    mvc.perform(post(LedgerPaths.JOURNALS)
+            .contentType(MediaType.APPLICATION_JSON)
+            .header(TraceIdFilter.HEADER, "trace-1")
+            .content(BALANCED))
+        .andExpect(status().isOk());
+    mvc.perform(post(LedgerPaths.JOURNALS)
+            .contentType(MediaType.APPLICATION_JSON)
+            .header(TraceIdFilter.HEADER, "trace-1")
+            .content(BALANCED))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("CONFLICT"));
+  }
+
+  /** Cancel 先到只记空回滚，随后的 Try 按悬挂拒绝。 */
+  @Test
+  void cancelBeforeTryHangs() throws Exception {
+    mvc.perform(post("/internal/ledger/freezes/freeze-1/cancel"))
+        .andExpect(status().isOk());
+    mvc.perform(post(LedgerPaths.FREEZES)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"traceId\":\"trace-1\",\"reference\":\"freeze-1\",\"accountId\":\"customer-myr\",\"amount\":{\"minorUnits\":1000,\"scale\":2,\"currency\":\"MYR\"}}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("CONFLICT"))
+        .andExpect(jsonPath("$.message").value("hanging"));
   }
 
   /** 不平衡分录在入账前返回 422 和 UNBALANCED_JOURNAL。 */

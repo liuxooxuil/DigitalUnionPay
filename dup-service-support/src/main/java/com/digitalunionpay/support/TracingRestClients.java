@@ -65,6 +65,7 @@ public final class TracingRestClients {
     if (xid != null && !xid.isBlank()) {
       request.getHeaders().set(RootContext.KEY_XID, xid);
     }
+    ServiceSigner.write(request, body);
     return execution.execute(request, body);
   }
 

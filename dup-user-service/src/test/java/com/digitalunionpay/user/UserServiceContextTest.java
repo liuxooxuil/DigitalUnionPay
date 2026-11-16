@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -11,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.digitalunionpay.notify.RocketNotificationPort;
 import com.digitalunionpay.notify.NotificationPort;
 import com.digitalunionpay.support.TraceIdFilter;
+import jakarta.servlet.Filter;
 import com.digitalunionpay.user.service.impl.InheritanceCaseServiceImpl;
 import com.digitalunionpay.user.service.impl.KycServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.hamcrest.Matchers;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
@@ -42,12 +45,15 @@ class UserServiceContextTest {
   @Autowired
   TraceIdFilter traceIdFilter;
 
+  @Autowired
+  Filter springSecurityFilterChain;
+
   private MockMvc mvc;
 
-  /** 装上链路号过滤器。 */
+  /** 装上链路号和 Spring Security。测试剖面关闭 token 校验，骨架接口仍返回 501。 */
   @BeforeEach
   void setUp() {
-    mvc = MockMvcBuilders.webAppContextSetup(context).addFilters(traceIdFilter).build();
+    mvc = MockMvcBuilders.webAppContextSetup(context).addFilters(traceIdFilter, springSecurityFilterChain).build();
   }
 
   /** 确认 KYC 和继承是占位实现，通知走 RocketMQ。 */
@@ -78,5 +84,13 @@ class UserServiceContextTest {
         .getHeader(TraceIdFilter.HEADER);
     assertNotNull(traceId);
     assertFalse(traceId.isBlank());
+  }
+
+  /** Prometheus 指标端点能读到 JVM 指标。 */
+  @Test
+  void prometheusEndpointExportsJvm() throws Exception {
+    mvc.perform(get("/actuator/prometheus"))
+        .andExpect(status().isOk())
+        .andExpect(content().string(Matchers.containsString("jvm_")));
   }
 }

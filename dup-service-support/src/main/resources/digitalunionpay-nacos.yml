@@ -16,6 +16,8 @@ spring:
         enabled: true
       transport:
         dashboard: ${SENTINEL_DASHBOARD:127.0.0.1:8080}
+    function:
+      definition: domainEvents
     stream:
       rocketmq:
         binder:
@@ -24,6 +26,23 @@ spring:
         domainEvents-out-0:
           destination: digitalunionpay-domain-events
           content-type: application/json
+        domainEvents-in-0:
+          destination: digitalunionpay-domain-events
+          group: digitalunionpay-domain-events
+          content-type: application/json
+          consumer:
+            max-attempts: 3
+        domainEvents-dlq-out-0:
+          destination: digitalunionpay-domain-events-dlq
+          content-type: application/json
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  tracing:
+    sampling:
+      probability: 1.0
 seata:
   enabled: true
   application-id: ${spring.application.name}

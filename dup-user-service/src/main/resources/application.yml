@@ -2,11 +2,8 @@
 spring:
   application:
     name: user-service
-  # schema.sql 建表，db/rbac-seed.sql 补初始管理员。两条脚本都可重复执行。
-  sql:
-    init:
-      mode: always
-      data-locations: classpath:db/rbac-seed.sql
+  flyway:
+    table: flyway_user_service
   datasource:
     url: "${MYSQL_URL:jdbc:mysql://127.0.0.1:3306/digital_union_pay?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}"
     username: ${MYSQL_USERNAME:root}
@@ -24,7 +21,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
 logging:
   pattern:
     level: "%5p [trace:%X{X-Trace-Id:-}]"
@@ -68,3 +65,7 @@ management:
 dup:
   auth:
     enabled: false
+  service-auth:
+    enabled: false
+  outbox:
+    publish: false
