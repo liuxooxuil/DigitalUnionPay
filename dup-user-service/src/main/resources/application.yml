@@ -1,6 +1,23 @@
+# 用户服务 user-service。注册、会话、RBAC、KYC 和继承在这里，资金变动不在这个进程里。端口 8081。
 spring:
   application:
     name: user-service
+  # schema.sql 建表，db/rbac-seed.sql 补初始管理员。两条脚本都可重复执行。
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:db/rbac-seed.sql
+  datasource:
+    url: "${MYSQL_URL:jdbc:mysql://127.0.0.1:3306/digital_union_pay?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}"
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: assign_id
 server:
   port: 8081
 management:
@@ -24,6 +41,11 @@ spring:
   config:
     activate:
       on-profile: test
+  datasource:
+    url: jdbc:h2:mem:digital_union_pay;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
   cloud:
     nacos:
       discovery:
@@ -43,3 +65,6 @@ management:
   health:
     rocketmq:
       enabled: false
+dup:
+  auth:
+    enabled: false

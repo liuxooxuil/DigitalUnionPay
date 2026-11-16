@@ -7,9 +7,11 @@ import org.apache.seata.tm.api.GlobalTransactionContext;
 /** 跨服务写操作的 Seata 全局事务。Seata 关闭时直接执行业务体。 */
 public final class GlobalTransactions {
 
+  /** 禁止实例化。 */
   private GlobalTransactions() {
   }
 
+  /** 在超时 60 秒的全局事务里执行 action。失败时回滚并继续抛出原异常。 */
   public static void run(String name, Runnable action) {
     if (!AlibabaSwitches.seata()) {
       action.run();
@@ -29,6 +31,7 @@ public final class GlobalTransactions {
     }
   }
 
+  /** 回滚当前全局事务。事务尚未开始时忽略回滚失败。 */
   private static void rollback(GlobalTransaction transaction) {
     try {
       transaction.rollback();

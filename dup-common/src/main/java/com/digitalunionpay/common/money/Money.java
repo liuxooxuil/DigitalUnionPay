@@ -5,6 +5,7 @@ package com.digitalunionpay.common.money;
  */
 public record Money(long minorUnits, int scale, String currency) {
 
+  /** 拒绝负数、越界的 scale 和不合规的币种代码。 */
   public Money {
     if (minorUnits < 0) {
       throw new IllegalArgumentException("minorUnits must be >= 0");

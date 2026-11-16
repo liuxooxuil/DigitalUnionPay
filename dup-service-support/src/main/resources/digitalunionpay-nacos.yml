@@ -1,3 +1,4 @@
+# 各服务共用的 Nacos、Sentinel、RocketMQ 和 Seata。不单独对应某一个进程。
 spring:
   cloud:
     nacos:
@@ -18,7 +19,7 @@ spring:
     stream:
       rocketmq:
         binder:
-          name-server: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
+          name-server: ${ROCKETMQ_NAMESRV:127.0.0.1:an1}
       bindings:
         domainEvents-out-0:
           destination: digitalunionpay-domain-events

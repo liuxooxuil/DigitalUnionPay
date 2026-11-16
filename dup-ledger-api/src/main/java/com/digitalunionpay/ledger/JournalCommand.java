@@ -12,6 +12,7 @@ import java.util.Map;
  */
 public record JournalCommand(String traceId, String reference, List<Posting> postings) {
 
+  /** 拒绝空白链路号和参考号，且分录至少两条。 */
   public JournalCommand {
     traceId = Ids.required(traceId, "traceId");
     reference = Ids.required(reference, "reference");
@@ -21,6 +22,7 @@ public record JournalCommand(String traceId, String reference, List<Posting> pos
     postings = List.copyOf(postings);
   }
 
+  /** 同一币种借贷必须相抵，scale 不一致也视为不平衡。 */
   public void requireBalanced() {
     Map<String, Integer> scales = new HashMap<>();
     Map<String, Long> net = new HashMap<>();

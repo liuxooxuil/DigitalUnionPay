@@ -11,6 +11,7 @@ public final class RocketNotificationPort implements NotificationPort {
 
   private final StreamBridge bridge;
 
+  /** 缺少 StreamBridge 时拒绝发送。 */
   public RocketNotificationPort(StreamBridge bridge) {
     if (bridge == null) {
       throw new IllegalArgumentException("bridge");
@@ -18,6 +19,7 @@ public final class RocketNotificationPort implements NotificationPort {
     this.bridge = bridge;
   }
 
+  /** 把通知事件发到 RocketMQ 绑定 domainEvents-out-0。 */
   @Override
   public void publish(String userId, NotifyEvent event, NotifyChannel channel) {
     Ids.required(userId, "userId");

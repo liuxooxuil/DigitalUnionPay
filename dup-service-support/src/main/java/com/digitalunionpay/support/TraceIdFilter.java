@@ -15,8 +15,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public final class TraceIdFilter extends OncePerRequestFilter {
 
+  /** 贯穿一次调用的链路号请求头。 */
   public static final String HEADER = "X-Trace-Id";
 
+  /** 沿用入站链路号，没有则生成 UUID，并在请求结束后清掉 MDC。 */
   @Override
   protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {

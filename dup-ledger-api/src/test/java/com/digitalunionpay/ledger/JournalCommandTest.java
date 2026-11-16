@@ -10,8 +10,10 @@ import com.digitalunionpay.common.money.Money;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+/** 检查复式分录只接受同一币种借贷平衡的分录。 */
 class JournalCommandTest {
 
+  /** 同一币种借贷相等时不抛异常。 */
   @Test
   void acceptsBalancedPostingsPerCurrency() {
     JournalCommand command = new JournalCommand(
@@ -24,6 +26,7 @@ class JournalCommandTest {
     assertDoesNotThrow(command::requireBalanced);
   }
 
+  /** 借贷不平抛出 UNBALANCED_JOURNAL。 */
   @Test
   void rejectsUnbalancedPostings() {
     JournalCommand command = new JournalCommand(

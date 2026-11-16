@@ -6,7 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.digitalunionpay.ledger.internal.SkeletonTccLedger;
+import com.digitalunionpay.ledger.service.impl.LedgerServiceImpl;
 import com.digitalunionpay.support.TraceIdFilter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+/** 检查清结算上下文、平衡分录的 501，以及不平衡分录的 422。 */
 @SpringBootTest
 @ActiveProfiles("test")
 class LedgerServiceContextTest {
@@ -41,16 +42,19 @@ class LedgerServiceContextTest {
 
   private MockMvc mvc;
 
+  /** 装上链路号过滤器。 */
   @BeforeEach
   void setUp() {
     mvc = MockMvcBuilders.webAppContextSetup(context).addFilters(traceIdFilter).build();
   }
 
+  /** 确认账本端口是本地占位实现。 */
   @Test
   void exposesTheLocalLedger() {
-    assertInstanceOf(SkeletonTccLedger.class, ledger);
+    assertInstanceOf(LedgerServiceImpl.class, ledger);
   }
 
+  /** 平衡分录经 HTTP 提交后返回 501，并回写原链路号。 */
   @Test
   void balancedJournalCrossesTheHttpBoundaryAndStaysUnimplemented() throws Exception {
     mvc.perform(post(LedgerPaths.JOURNALS)
@@ -62,6 +66,7 @@ class LedgerServiceContextTest {
         .andExpect(jsonPath("$.code").value("PORT_NOT_IMPLEMENTED"));
   }
 
+  /** 不平衡分录在入账前返回 422 和 UNBALANCED_JOURNAL。 */
   @Test
   void unbalancedJournalIsRejectedBeforePosting() throws Exception {
     mvc.perform(post(LedgerPaths.JOURNALS)

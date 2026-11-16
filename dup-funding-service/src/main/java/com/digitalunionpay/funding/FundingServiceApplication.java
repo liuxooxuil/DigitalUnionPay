@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class FundingServiceApplication {
 
+  /** 启动本进程。 */
   public static void main(String[] args) {
     SpringApplication.run(FundingServiceApplication.class, args);
   }

@@ -1,6 +1,18 @@
+# 估值服务 valuation-service。汇率、金价和加密资产价格只从这里读出。端口 8084。
 spring:
   application:
     name: valuation-service
+  datasource:
+    url: "${MYSQL_URL:jdbc:mysql://127.0.0.1:3306/digital_union_pay?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}"
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: assign_id
 server:
   port: 8084
 management:
@@ -24,6 +36,11 @@ spring:
   config:
     activate:
       on-profile: test
+  datasource:
+    url: jdbc:h2:mem:digital_union_pay;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
   cloud:
     nacos:
       discovery:
@@ -43,3 +60,6 @@ management:
   health:
     rocketmq:
       enabled: false
+dup:
+  auth:
+    enabled: false

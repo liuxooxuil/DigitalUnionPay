@@ -11,9 +11,11 @@ import org.springframework.http.client.ClientHttpResponse;
 /** 出站 HTTP 按目标服务名做 Sentinel 资源。关闭时直接放行。 */
 public final class SentinelGuards {
 
+  /** 禁止实例化。 */
   private SentinelGuards() {
   }
 
+  /** 按目标主机申请 Sentinel 资源，被限流时中断这次出站调用。 */
   public static ClientHttpResponse outbound(
       HttpRequest request, byte[] body, ClientHttpRequestExecution execution) throws IOException {
     if (!AlibabaSwitches.sentinel()) {

@@ -11,8 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.digitalunionpay.notify.RocketNotificationPort;
 import com.digitalunionpay.notify.NotificationPort;
 import com.digitalunionpay.support.TraceIdFilter;
-import com.digitalunionpay.user.internal.SkeletonInheritanceCasePort;
-import com.digitalunionpay.user.internal.SkeletonKycGate;
+import com.digitalunionpay.user.service.impl.InheritanceCaseServiceImpl;
+import com.digitalunionpay.user.service.impl.KycServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+/** 检查用户服务上下文、出入金接口的 501，以及链路号是否回写。 */
 @SpringBootTest
 @ActiveProfiles("test")
 class UserServiceContextTest {
@@ -43,18 +44,21 @@ class UserServiceContextTest {
 
   private MockMvc mvc;
 
+  /** 装上链路号过滤器。 */
   @BeforeEach
   void setUp() {
     mvc = MockMvcBuilders.webAppContextSetup(context).addFilters(traceIdFilter).build();
   }
 
+  /** 确认 KYC 和继承是占位实现，通知走 RocketMQ。 */
   @Test
   void keepsKycLocalAndSendsNotificationsOverHttp() {
-    assertInstanceOf(SkeletonKycGate.class, kycGate);
-    assertInstanceOf(SkeletonInheritanceCasePort.class, inheritance);
+    assertInstanceOf(KycServiceImpl.class, kycGate);
+    assertInstanceOf(InheritanceCaseServiceImpl.class, inheritance);
     assertInstanceOf(RocketNotificationPort.class, notifications);
   }
 
+  /** 带链路号查询出入金资格时返回 501，并回写原链路号。 */
   @Test
   void fundingCheckIsRejectedUntilKycIsImplemented() throws Exception {
     mvc.perform(get(UserPaths.FUNDING_ALLOWED, "user-1").header(TraceIdFilter.HEADER, "trace-kyc"))
@@ -63,6 +67,7 @@ class UserServiceContextTest {
         .andExpect(jsonPath("$.code").value("PORT_NOT_IMPLEMENTED"));
   }
 
+  /** 未带链路号时响应里写出非空的 X-Trace-Id。 */
   @Test
   void missingTraceHeaderIsCreated() throws Exception {
     String traceId = mvc.perform(get(UserPaths.FUNDING_ALLOWED, "user-1"))

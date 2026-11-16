@@ -8,5 +8,6 @@ import com.digitalunionpay.common.money.Money;
  */
 public interface FundingCoordinator {
 
+  /** 按 KYC、风控、再清结算 TCC 的顺序处理一笔已到账法币。 */
   void onFiatSettled(String userId, Money amount, String providerReference);
 }

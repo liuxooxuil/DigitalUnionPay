@@ -1,6 +1,12 @@
+# 兑换服务 exchange-service。锁价后由清结算完成双边记账。端口 8087。
 spring:
   application:
     name: exchange-service
+  datasource:
+    url: "${MYSQL_URL:jdbc:mysql://127.0.0.1:3306/digital_union_pay?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}"
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
 server:
   port: 8087
 management:
@@ -11,6 +17,12 @@ management:
 logging:
   pattern:
     level: "%5p [trace:%X{X-Trace-Id:-}]"
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: assign_id
 ---
 spring:
   config:
@@ -37,9 +49,17 @@ spring:
     stream:
       function:
         autodetect: false
+  datasource:
+    url: jdbc:h2:mem:digital_union_pay;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
 seata:
   enabled: false
 management:
   health:
     rocketmq:
       enabled: false
+dup:
+  auth:
+    enabled: false
