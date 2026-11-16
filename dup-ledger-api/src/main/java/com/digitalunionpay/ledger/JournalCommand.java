@@ -36,12 +36,21 @@ public record JournalCommand(String traceId, String reference, List<Posting> pos
       long signed = posting.side() == EntrySide.DEBIT
           ? posting.amount().minorUnits()
           : -posting.amount().minorUnits();
-      net.merge(currency, signed, Long::sum);
+      net.merge(currency, signed, (left, right) -> add(currency, left, right));
     }
     for (Map.Entry<String, Long> entry : net.entrySet()) {
       if (entry.getValue() != 0L) {
         throw new BusinessException(ErrorCode.UNBALANCED_JOURNAL, entry.getKey());
       }
+    }
+  }
+
+  /** 合计溢出时按不平衡拒绝，不用回绕后的 long。 */
+  private static long add(String currency, long left, long right) {
+    try {
+      return Math.addExact(left, right);
+    } catch (ArithmeticException exception) {
+      throw new BusinessException(ErrorCode.UNBALANCED_JOURNAL, currency);
     }
   }
 }

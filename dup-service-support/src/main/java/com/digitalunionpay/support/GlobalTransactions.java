@@ -13,13 +13,24 @@ public final class GlobalTransactions {
 
   /** 在超时 60 秒的全局事务里执行 action。失败时回滚并继续抛出原异常。 */
   public static void run(String name, Runnable action) {
+    run(name, 60_000, action);
+  }
+
+  /** 超时由调用方指定。Seata 关闭时直接执行，不在这里重试业务体。 */
+  public static void run(String name, int timeoutMillis, Runnable action) {
+    if (action == null) {
+      throw new IllegalArgumentException("action");
+    }
+    if (timeoutMillis < 1) {
+      throw new IllegalArgumentException("timeoutMillis");
+    }
     if (!AlibabaSwitches.seata()) {
       action.run();
       return;
     }
     GlobalTransaction transaction = GlobalTransactionContext.getCurrentOrCreate();
     try {
-      transaction.begin(60_000, name);
+      transaction.begin(timeoutMillis, name);
       action.run();
       transaction.commit();
     } catch (RuntimeException ex) {

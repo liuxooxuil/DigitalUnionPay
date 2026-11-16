@@ -19,7 +19,7 @@ spring:
     stream:
       rocketmq:
         binder:
-          name-server: ${ROCKETMQ_NAMESRV:127.0.0.1:an1}
+          name-server: ${ROCKETMQ_NAMESRV:127.0.0.1:9876}
       bindings:
         domainEvents-out-0:
           destination: digitalunionpay-domain-events

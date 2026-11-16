@@ -63,7 +63,8 @@ class LedgerServiceContextTest {
             .content(BALANCED))
         .andExpect(status().is(501))
         .andExpect(header().string(TraceIdFilter.HEADER, "trace-1"))
-        .andExpect(jsonPath("$.code").value("PORT_NOT_IMPLEMENTED"));
+        .andExpect(jsonPath("$.code").value("PORT_NOT_IMPLEMENTED"))
+        .andExpect(jsonPath("$.traceId").value("trace-1"));
   }
 
   /** 不平衡分录在入账前返回 422 和 UNBALANCED_JOURNAL。 */
@@ -75,6 +76,19 @@ class LedgerServiceContextTest {
             .content(UNBALANCED))
         .andExpect(status().is(422))
         .andExpect(header().string(TraceIdFilter.HEADER, "trace-1"))
-        .andExpect(jsonPath("$.code").value("UNBALANCED_JOURNAL"));
+        .andExpect(jsonPath("$.code").value("UNBALANCED_JOURNAL"))
+        .andExpect(jsonPath("$.traceId").value("trace-1"));
+  }
+
+  /** 请求体不是 JSON 时返回 400，不把解析细节回给调用方。 */
+  @Test
+  void malformedJsonIsBadRequest() throws Exception {
+    mvc.perform(post(LedgerPaths.JOURNALS)
+            .contentType(MediaType.APPLICATION_JSON)
+            .header(TraceIdFilter.HEADER, "trace-bad")
+            .content("{"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
+        .andExpect(jsonPath("$.traceId").value("trace-bad"));
   }
 }

@@ -1,9 +1,15 @@
 package com.digitalunionpay.support;
 
+import java.time.Clock;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.jackson.autoconfigure.JsonMapperBuilderCustomizer;
 import org.springframework.boot.restclient.autoconfigure.RestClientBuilderConfigurer;
+import org.springframework.cloud.stream.function.StreamBridge;
+import org.springframework.jdbc.core.JdbcTemplate;
+import tools.jackson.databind.cfg.DateTimeFeature;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.context.annotation.Bean;
@@ -55,6 +61,31 @@ public class ServiceSupportAutoConfiguration {
         registry.addInterceptor(interceptor).addPathPatterns("/**");
       }
     };
+  }
+
+  /** 业务时钟固定为 UTC。测试可以声明自己的 Clock 覆盖它。 */
+  @Bean
+  @ConditionalOnMissingBean(Clock.class)
+  Clock utcClock() {
+    return Clock.systemUTC();
+  }
+
+  /** 时间写成 ISO-8601 字符串，不写成毫秒数字。 */
+  @Bean
+  JsonMapperBuilderCustomizer utcJson() {
+    return builder -> builder.disable(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS);
+  }
+
+  /** 每个进程一张幂等表。调用方要把 claim 和业务写放进同一个事务。 */
+  @Bean
+  IdempotencyStore idempotencyStore(JdbcTemplate jdbc, Clock utcClock) {
+    return new JdbcIdempotencyStore(jdbc, utcClock);
+  }
+
+  /** 有 StreamBridge 时用它发领域事件，没有时发布会返回不可用。 */
+  @Bean
+  DomainEvents domainEvents(ObjectProvider<StreamBridge> bridges) {
+    return new DomainEvents(bridges.getIfAvailable());
   }
 
   /** 按 seata.enabled 和 spring.cloud.sentinel.enabled 记下运行开关。 */

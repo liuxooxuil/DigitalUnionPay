@@ -17,4 +17,16 @@ public record Money(long minorUnits, int scale, String currency) {
       throw new IllegalArgumentException("currency must be 3-10 uppercase letters or digits");
     }
   }
+
+  /** 同一币种、同一 scale 才能相加。溢出时拒绝，不回绕。 */
+  public Money plus(Money other) {
+    if (other == null || scale != other.scale || !currency.equals(other.currency)) {
+      throw new IllegalArgumentException("money");
+    }
+    try {
+      return new Money(Math.addExact(minorUnits, other.minorUnits), scale, currency);
+    } catch (ArithmeticException exception) {
+      throw new IllegalArgumentException("money");
+    }
+  }
 }

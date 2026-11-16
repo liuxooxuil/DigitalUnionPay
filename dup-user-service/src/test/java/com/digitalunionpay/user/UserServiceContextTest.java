@@ -64,7 +64,8 @@ class UserServiceContextTest {
     mvc.perform(get(UserPaths.FUNDING_ALLOWED, "user-1").header(TraceIdFilter.HEADER, "trace-kyc"))
         .andExpect(status().is(501))
         .andExpect(header().string(TraceIdFilter.HEADER, "trace-kyc"))
-        .andExpect(jsonPath("$.code").value("PORT_NOT_IMPLEMENTED"));
+        .andExpect(jsonPath("$.code").value("PORT_NOT_IMPLEMENTED"))
+        .andExpect(jsonPath("$.traceId").value("trace-kyc"));
   }
 
   /** 未带链路号时响应里写出非空的 X-Trace-Id。 */
