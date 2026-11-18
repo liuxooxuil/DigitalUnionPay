@@ -24,10 +24,10 @@ public final class HttpInheritanceCasePort implements InheritanceCasePort {
 
   /** 调用 POST /internal/inheritance-cases 提交继承案件。 */
   @Override
-  public void open(String caseId, String heirUserId) {
+  public void open(String caseId, String estateUserId, String heirUserId, String applicantRole, String evidenceBase64) {
     client.post()
         .uri(UserPaths.INHERITANCE_CASES)
-        .body(new OpenInheritanceCase(caseId, heirUserId))
+        .body(new OpenInheritanceCase(caseId, estateUserId, heirUserId, applicantRole, evidenceBase64))
         .retrieve()
         .toBodilessEntity();
   }

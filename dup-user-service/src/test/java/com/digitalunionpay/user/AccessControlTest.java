@@ -2,9 +2,11 @@ package com.digitalunionpay.user;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.digitalunionpay.common.AuthPaths;
 import com.digitalunionpay.support.TraceIdFilter;
 import com.digitalunionpay.user.auth.PasswordHashes;
 import com.digitalunionpay.user.entity.RbacUserEntity;
@@ -57,6 +59,26 @@ class AccessControlTest {
     mvc = MockMvcBuilders.webAppContextSetup(context).addFilters(traceIdFilter, springSecurityFilterChain).build();
   }
 
+  /** 打开 token 校验后，注册仍然不需要 Authorization。 */
+  @Test
+  void registerDoesNotRequireAToken() throws Exception {
+    mvc.perform(post(AuthPaths.VERIFICATION_CODES)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"channel\":\"SMS\",\"countryCode\":\"86\",\"phone\":\"13800001088\",\"purpose\":\"REGISTER\"}"))
+        .andExpect(status().isOk());
+    String code = jdbc.queryForObject(
+        "SELECT payload FROM dup_outbox WHERE event_type = 'user.verification' AND payload LIKE ? ORDER BY created_at DESC LIMIT 1",
+        String.class,
+        "SMS|+8613800001088|REGISTER|%");
+    code = code.substring(code.lastIndexOf('|') + 1);
+    mvc.perform(post(AuthPaths.REGISTER)
+            .header("X-Forwarded-For", "10.8.0.1")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"channel\":\"SMS\",\"countryCode\":\"86\",\"phone\":\"13800001088\",\"code\":\"" + code + "\",\"password\":\"pass1234\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userStatus").value("PENDING_KYC"));
+  }
+
   /** 没有 Authorization 时出入金接口返回 401。 */
   @Test
   void missingTokenIsUnauthorized() throws Exception {
@@ -77,15 +99,15 @@ class AccessControlTest {
         .andExpect(jsonPath("$.code").value("FORBIDDEN"));
   }
 
-  /** 权限匹配后仍走原来的未实现端口，返回 501。 */
+  /** 权限匹配后，没有通过 KYC 的用户不允许出入金。 */
   @Test
   void matchingGrantReachesThePort() throws Exception {
     insertUser("alice", "user-1", "secret");
     grant("user-1", "*", "/internal/**");
     String token = login("alice", "secret");
     mvc.perform(get(UserPaths.FUNDING_ALLOWED, "user-1").header("Authorization", "Bearer " + token))
-        .andExpect(status().is(501))
-        .andExpect(jsonPath("$.code").value("PORT_NOT_IMPLEMENTED"));
+        .andExpect(status().isOk())
+        .andExpect(content().string("false"));
   }
 
   /** 写入一个可登录的账号。 */

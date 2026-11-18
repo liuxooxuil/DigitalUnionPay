@@ -3,6 +3,7 @@ package com.digitalunionpay.ledger.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import java.time.LocalDateTime;
 
 /** 分录，表 ledger_journal。 */
 @TableName("ledger_journal")
@@ -14,6 +15,8 @@ public class JournalEntity {
   private String traceId;
 
   private String reference;
+
+  private LocalDateTime createdAt;
 
   public Long getId() {
     return id;
@@ -37,5 +40,13 @@ public class JournalEntity {
 
   public void setReference(String reference) {
     this.reference = reference;
+  }
+
+  public LocalDateTime getCreatedAt() {
+    return createdAt;
+  }
+
+  public void setCreatedAt(LocalDateTime createdAt) {
+    this.createdAt = createdAt;
   }
 }

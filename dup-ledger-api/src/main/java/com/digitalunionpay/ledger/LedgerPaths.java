@@ -10,6 +10,10 @@ public final class LedgerPaths {
   public static final String FREEZE_CANCEL = "/internal/ledger/freezes/{id}/cancel";
   /** 提交复式分录。 */
   public static final String JOURNALS = "/internal/ledger/journals";
+  /** 开户和按归属人查询余额。 */
+  public static final String ACCOUNTS = "/internal/ledger/accounts";
+  /** 按归属人查询流水。 */
+  public static final String STATEMENTS = "/internal/ledger/statements";
 
   /** 禁止实例化。 */
   private LedgerPaths() {

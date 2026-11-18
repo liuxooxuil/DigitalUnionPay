@@ -24,4 +24,7 @@ public class PhysicalController {
   public IntakeId record(@RequestBody RecordIntake request) {
     return new IntakeId(intake.record(request.deviceId(), request.rfid(), request.valuation()));
   }
+
+
+
 }

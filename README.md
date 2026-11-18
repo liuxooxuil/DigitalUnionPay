@@ -2,7 +2,7 @@
 
 A platform for digital assets and fiat funds. Version `0.1.0-SNAPSHOT` splits module boundaries, internal APIs, and processes. Customer balances change only inside the ledger.
 
-External callers enter through the edge gateway on port `8070`. They do not call ledger, funding, crypto, exchange, matching, trading, or physical services directly. Most business ports still validate input and return `PORT_NOT_IMPLEMENTED`. Ledger posting, user login, and the edge checks below are implemented.
+External callers enter through the edge gateway on port `8070`. They do not call ledger, funding, crypto, exchange, matching, trading, or physical services directly. Most business ports still validate input and return `PORT_NOT_IMPLEMENTED`. Ledger posting, user registration, user login, and the edge checks below are implemented.
 
 ## Stack
 
@@ -51,12 +51,13 @@ Service names live in `com.digitalunionpay.support.ServiceNames`. Calls between 
 
 | Check | Behavior |
 | --- | --- |
-| Path isolation | `/internal/**` returns 403 `internal`. `/api/funding`, `/api/ledger`, `/api/crypto`, `/api/exchange`, `/api/matching`, `/api/trading`, and `/api/physical` return 403 `external`. Any other external path except the two below also returns 403 `external` |
-| Login | `POST /api/auth/login` skips the edge signature and JWT. The gateway rewrites it to `POST /internal/auth/login` on `USER_SERVICE_URI` (default `http://127.0.0.1:8081`) and adds service HMAC headers. If that process is down, the gateway returns 503 `UNAVAILABLE`. A failed send is not a completed login |
+| Path isolation | `/internal/**` returns 403 `internal`. `/api/funding`, `/api/ledger`, `/api/crypto`, `/api/exchange`, `/api/matching`, `/api/trading`, and `/api/physical` return 403 `external`. Other external paths return 403 `external`, except the anonymous auth posts below, signed customer paths (`/api/users/**`, `/api/sessions/**`, `/api/auth/security/**`, `/api/inheritance-cases/**`, `/api/kyc-cases/**`, `/api/closures/**`), ping, and actuator |
+| Register | `POST /api/auth/register` skips the edge signature and JWT. The gateway rewrites it to `POST /internal/auth/register`, forwards `X-Forwarded-For`, and adds service HMAC. Phone registration is an international dial code plus a 6-digit SMS code (5 minutes, 10 sends per phone per UTC day). Email registration uses a 6-digit code valid for 10 minutes. The code is not returned in the HTTP body. Password is 8–20 characters and must contain letters and digits. Success opens a main account in `PENDING_KYC` and a ledger account with available 0 and frozen 0. The same phone or email can register once. One IP can register at most 5 accounts per hour. If the user process is down, the gateway returns 503 `UNAVAILABLE` |
+| Login | `POST /api/auth/login` skips the edge signature and JWT and is rewritten to `POST /internal/auth/login`. Five consecutive password failures lock the account for 30 minutes. SMS and email code login are `POST /api/auth/login/code`. App biometric login is `POST /api/auth/login/biometric` after `POST /api/auth/security/devices` binds an Ed25519 key. A missing login user still gets HTTP 200 from the code-send endpoint and no code is stored. Idle timeout defaults to 2 hours (`dup.auth.idle-hours`). The access token absolute lifetime stays 12 hours. At most 5 devices stay online. `GET /api/sessions` lists them and `DELETE /api/sessions/{id}` revokes one. A new device or a different IPv4 /16 sends an outbox alert. If the user process is down, the gateway returns 503 `UNAVAILABLE` |
 | Ping | `GET /api/edge/ping` is local. It requires the edge HMAC and a JWT whose `grants` allow that method and path |
 | Actuator | `/actuator/**` skips the edge signature and JWT so probes can run |
 | IP deny list | `dup.edge.deny-ips` / `DUP_EDGE_DENY_IPS`. The first `X-Forwarded-For` hop is used, otherwise the socket address. Trust that header only when this process is the first public hop |
-| User rate limit | Default 30 requests per 10 seconds, keyed by JWT subject. Login is keyed by IP. In-memory on this process, not shared across replicas. HTTP 429 `RATE_LIMITED` |
+| User rate limit | Default 30 requests per 10 seconds, keyed by JWT subject. Login and registration are keyed by IP. In-memory on this process, not shared across replicas. HTTP 429 `RATE_LIMITED` |
 | Edge HMAC | `X-Edge-Time`, `X-Edge-Nonce`, `X-Edge-Sign`. Canonical string is `method\npath\ntimestamp\nnonce\nhex(sha256(body))`. Secret `dup.edge.secret`, default `DigitalUnionPayEdgeSecretKey32!!`. This is not the service HMAC secret. Clock skew is 300 seconds. A repeated nonce returns 401 `nonce`. The nonce table is in-memory on this process |
 | JWT | HS256, issuer `digitalunionpay`, secret `dup.auth.jwt-secret`. Missing or invalid tokens return 401 `token`. A valid token without the path grant returns 403 `path` |
 
@@ -64,7 +65,7 @@ Service names live in `com.digitalunionpay.support.ServiceNames`. Calls between 
 
 | Area | What the code does |
 | --- | --- |
-| Human authentication | Spring Security on each business process. HS256 JWT, issuer `digitalunionpay`. Login stores `sha256(jti)` in `auth_token`, not the raw token. Access token lifetime is 12 hours. Claims include `uid` and `grants` (`METHOD path`) |
+| Human authentication | Spring Security on each business process. HS256 JWT, issuer `digitalunionpay`. Login stores `sha256(jti)` in `auth_token`, not the raw token. Access token absolute lifetime is 12 hours. A session also expires after 2 hours without use, which is `dup.auth.idle-hours`. At most 5 devices stay online. Claims include `uid` and `grants` (`METHOD path`) |
 | Password storage | New passwords are Argon2id (`$argon2id$`). Existing PBKDF2 strings `iterations$salt$hash` still verify, including the seeded admin |
 | Authorization | RBAC tables in the user service. Each process checks `grants` with an Ant path. Ledger also applies a narrow ABAC check: when the JWT `uid` and `ledger_account.owner_user_id` are both set, they must match |
 | Service calls | HMAC headers `X-Service-Time`, `X-Service-Nonce`, `X-Service-Sign`, secret `dup.service-auth.secret`. Nonces are stored in `dup_service_nonce`. This is a shared service credential, not mTLS. No certificates are provisioned |
@@ -82,7 +83,8 @@ Local development uses one MySQL database, `digital_union_pay`, unless `MYSQL_UR
 | --- | --- | --- |
 | Platform | `dup_idempotency`, `dup_outbox`, `dup_dead_letter`, `dup_tcc_fence`, `dup_service_nonce` | Created by `dup-service-support` |
 | Audit and inbox | `dup_audit`, `dup_inbox` | Shared until each process gets its own database |
-| User | `rbac_user`, `rbac_role`, `rbac_permission`, `rbac_user_role`, `rbac_role_permission`, `auth_token` | Passwords and roles live here |
+| User | `rbac_user`, `rbac_role`, `rbac_permission`, `rbac_user_role`, `rbac_role_permission`, `auth_token`, `user_profile`, `verification_code`, `registration_event`, `device_credential`, `kyc_case`, `kyc_document`, `sanctions_entry`, `airwallex_account`, `bank_account`, `kyc_limit`, `closure_request`, `inheritance_case` | Passwords live on `rbac_user`. Registration writes `user_profile` with `PENDING_KYC` and `NOT_SUBMITTED`, and the login row stays `ACTIVE`. KYC approval sets the user to `ACTIVE`, level `BASIC`, and queues an Airwallex connected account as `PENDING` when no base URL is configured. It does not mark that sync as completed. OFAC screening reads `sanctions_entry`; an empty table is not a hidden pass. Funding is allowed only when KYC is `APPROVED`, the user is `ACTIVE`, and the account is `NORMAL` |
+| Funds | `fund`, `fund_account`, `user_fund_account` | One fund account per user per fund, like one card per fund. `user_fund_account` is unique on `(user_id, fund_code)` and on `account_no`. Registration inserts the `MAIN` fiat account and opens the same id in the ledger at zero. These tables hold no balances. Inheritance moves available balances with a balanced ledger journal |
 | Ledger | `ledger_journal`, `ledger_posting`, `ledger_freeze`, `ledger_account` | The only balance store |
 | Funding | `funding_deposit`, `funding_withdrawal` | Unique `reference`. The port still returns 501 and does not write these rows |
 | Risk | `risk_decision` | Unique `reference`. Port still 501 |
@@ -174,10 +176,19 @@ These paths are for calls between services. The edge gateway rejects `/internal/
 
 | Service | Method and path | Purpose |
 | --- | --- | --- |
-| User | `POST /internal/auth/login` | Exchange a username and password for a JWT |
-| User | `POST /internal/auth/access` | Re-check the token against the database |
-| User | `GET /internal/users/{userId}/funding-allowed` | Check that KYC is approved |
-| User | `POST /internal/inheritance-cases` | Open an inheritance case |
+| User | `POST /internal/auth/verification-codes` | Send a 6-digit SMS or email code. The body does not contain the code |
+| User | `POST /internal/auth/register` | Create a login, a pending-KYC profile, and a zero-balance main account |
+| User | `POST /internal/auth/login` | Exchange a username and password for a JWT. Five failures lock the account for 30 minutes |
+| User | `POST /internal/auth/login/code` | Exchange a SMS or email code for a JWT |
+| User | `POST /internal/auth/login/biometric` | Exchange a bound device signature for a JWT |
+| User | `POST /internal/auth/access` | Re-check the token against the database, including idle timeout |
+| User | `GET /internal/sessions` | List online devices |
+| User | `DELETE /internal/sessions/{sessionId}` | Revoke one device |
+| User | `GET /internal/users/{userId}/funding-allowed` | True only when KYC is approved, the user is active, and the account is normal |
+| User | `POST /internal/users/me/kyc` | Submit confirmed KYC. A sanctions hit returns 403 `sanctions` and does not enter review |
+| User | `POST /internal/kyc-cases/{userId}/decision` | Approve, reject, or request information. Approval queues Airwallex as `PENDING` |
+| User | `POST /internal/inheritance-cases` | Open an inheritance case. The server stores a hash of the uploaded evidence |
+| User | `POST /internal/inheritance-cases/{caseId}/reviews` | Two different reviewers. The second approval freezes the estate and posts a balanced transfer to the heir |
 | Ledger | `POST /internal/ledger/freezes` | TCC Try |
 | Ledger | `POST /internal/ledger/freezes/{id}/confirm` | TCC Confirm |
 | Ledger | `POST /internal/ledger/freezes/{id}/cancel` | TCC Cancel |
@@ -241,6 +252,6 @@ Kubernetes manifests are in `deploy/k8s`. The images are not built. Secrets in t
 
 ## Current state
 
-User login, RBAC, JWT, service HMAC, ledger journals, balances, TCC fence, outbox, and the edge gateway are wired. Funding, risk, valuation, notify, exchange, matching, crypto, physical, and trading ports are still skeletons and return `PORT_NOT_IMPLEMENTED` after input checks. Their new tables are reserved for the next implementation and are not written by those ports.
+User registration, login, RBAC, JWT, service HMAC, ledger journals, balances, TCC fence, outbox, and the edge gateway are wired. Registration creates `rbac_user` and `user_profile` only. Funding, risk, valuation, notify, exchange, matching, crypto, physical, and trading ports are still skeletons and return `PORT_NOT_IMPLEMENTED` after input checks. Their new tables, and the fund-account tables, are reserved for the next implementation and are not written by those ports.
 
 Later implementations should replace the skeletons and keep the current ports and paths.

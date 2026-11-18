@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.digitalunionpay.notify.RocketNotificationPort;
@@ -50,7 +49,7 @@ class UserServiceContextTest {
 
   private MockMvc mvc;
 
-  /** 装上链路号和 Spring Security。测试剖面关闭 token 校验，骨架接口仍返回 501。 */
+  /** 装上链路号和 Spring Security。测试剖面关闭 token 校验。 */
   @BeforeEach
   void setUp() {
     mvc = MockMvcBuilders.webAppContextSetup(context).addFilters(traceIdFilter, springSecurityFilterChain).build();
@@ -64,21 +63,20 @@ class UserServiceContextTest {
     assertInstanceOf(RocketNotificationPort.class, notifications);
   }
 
-  /** 带链路号查询出入金资格时返回 501，并回写原链路号。 */
+  /** 未知用户不允许出入金，并回写原链路号。 */
   @Test
   void fundingCheckIsRejectedUntilKycIsImplemented() throws Exception {
     mvc.perform(get(UserPaths.FUNDING_ALLOWED, "user-1").header(TraceIdFilter.HEADER, "trace-kyc"))
-        .andExpect(status().is(501))
+        .andExpect(status().isOk())
         .andExpect(header().string(TraceIdFilter.HEADER, "trace-kyc"))
-        .andExpect(jsonPath("$.code").value("PORT_NOT_IMPLEMENTED"))
-        .andExpect(jsonPath("$.traceId").value("trace-kyc"));
+        .andExpect(content().string("false"));
   }
 
   /** 未带链路号时响应里写出非空的 X-Trace-Id。 */
   @Test
   void missingTraceHeaderIsCreated() throws Exception {
     String traceId = mvc.perform(get(UserPaths.FUNDING_ALLOWED, "user-1"))
-        .andExpect(status().is(501))
+        .andExpect(status().isOk())
         .andReturn()
         .getResponse()
         .getHeader(TraceIdFilter.HEADER);

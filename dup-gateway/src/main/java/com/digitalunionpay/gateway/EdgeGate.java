@@ -71,7 +71,7 @@ public class EdgeGate extends OncePerRequestFilter {
     }
   }
 
-  /** 内部路径和资金前缀直接拒绝。登录只限 IP 和频率。探测接口要签名和权限。 */
+  /** 内部路径和资金前缀直接拒绝。登录和注册只限 IP 和频率。探测接口要签名和权限。 */
   @Override
   protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
@@ -98,7 +98,7 @@ public class EdgeGate extends OncePerRequestFilter {
       chain.doFilter(request, response);
       return;
     }
-    if (login(request, path)) {
+    if (anonymous(request, path)) {
       if (!allow(ip)) {
         EdgeResponses.write(response, ErrorCode.RATE_LIMITED, "user", trace);
         return;
@@ -106,7 +106,7 @@ public class EdgeGate extends OncePerRequestFilter {
       chain.doFilter(request, response);
       return;
     }
-    if (!ping(request, path)) {
+    if (!customer(path) && !ping(request, path)) {
       EdgeResponses.write(response, ErrorCode.FORBIDDEN, "external", trace);
       return;
     }
@@ -178,7 +178,7 @@ public class EdgeGate extends OncePerRequestFilter {
       EdgeResponses.write(response, ErrorCode.UNAUTHENTICATED, "token", trace);
       return null;
     }
-    if (!EdgeGrants.allows(jwt.getClaim("grants"), request.getMethod(), path)) {
+    if (!EdgeGrants.allows(jwt.getClaim("grants"), request.getMethod(), grantPath(path))) {
       EdgeResponses.write(response, ErrorCode.FORBIDDEN, "path", trace);
       return null;
     }
@@ -218,8 +218,45 @@ public class EdgeGate extends OncePerRequestFilter {
     return uri == null || uri.isBlank() ? "/" : uri;
   }
 
-  private static boolean login(HttpServletRequest request, String path) {
-    return "POST".equals(request.getMethod()) && "/api/auth/login".equals(path);
+  private static boolean anonymous(HttpServletRequest request, String path) {
+    if (!"POST".equals(request.getMethod())) {
+      return false;
+    }
+    return "/api/auth/login".equals(path)
+        || "/api/auth/register".equals(path)
+        || "/api/auth/verification-codes".equals(path)
+        || "/api/auth/login/code".equals(path)
+        || "/api/auth/login/biometric".equals(path)
+        || "/api/auth/biometric/challenges".equals(path);
+  }
+
+  /** 已登录客户和审核接口。权限按内部路径判断，因为 JWT 里写的是内部路径。 */
+  private static boolean customer(String path) {
+    return path.startsWith("/api/users/")
+        || "/api/users".equals(path)
+        || path.startsWith("/api/sessions/")
+        || "/api/sessions".equals(path)
+        || path.startsWith("/api/inheritance-cases/")
+        || "/api/inheritance-cases".equals(path)
+        || path.startsWith("/api/auth/security/")
+        || "/api/auth/security".equals(path)
+        || path.startsWith("/api/kyc-cases/")
+        || "/api/kyc-cases".equals(path)
+        || path.startsWith("/api/closures/")
+        || "/api/closures".equals(path);
+  }
+
+  /** 把对外路径换成用户服务里的内部路径。探测接口保持原样。 */
+  static String grantPath(String path) {
+    if (path.startsWith("/api/auth/")
+        || path.startsWith("/api/users")
+        || path.startsWith("/api/sessions")
+        || path.startsWith("/api/inheritance-cases")
+        || path.startsWith("/api/kyc-cases")
+        || path.startsWith("/api/closures")) {
+      return "/internal" + path.substring("/api".length());
+    }
+    return path;
   }
 
   private static boolean ping(HttpServletRequest request, String path) {

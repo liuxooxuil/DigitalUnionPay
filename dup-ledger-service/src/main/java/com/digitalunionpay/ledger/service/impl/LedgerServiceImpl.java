@@ -3,10 +3,15 @@ package com.digitalunionpay.ledger.service.impl;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.digitalunionpay.common.error.BusinessException;
 import com.digitalunionpay.common.error.ErrorCode;
+import com.digitalunionpay.common.Ids;
+import com.digitalunionpay.common.money.Money;
+import com.digitalunionpay.ledger.AccountBalance;
 import com.digitalunionpay.ledger.FreezeId;
 import com.digitalunionpay.ledger.FreezeRequest;
 import com.digitalunionpay.ledger.JournalCommand;
+import com.digitalunionpay.ledger.OpenAccount;
 import com.digitalunionpay.ledger.Posting;
+import com.digitalunionpay.ledger.StatementLine;
 import com.digitalunionpay.ledger.entity.FreezeEntity;
 import com.digitalunionpay.ledger.entity.JournalEntity;
 import com.digitalunionpay.ledger.entity.PostingEntity;
@@ -21,6 +26,12 @@ import com.digitalunionpay.support.IdempotencyStore;
 import com.digitalunionpay.support.Outbox;
 import com.digitalunionpay.support.PlatformMeters;
 import com.digitalunionpay.support.TccFence;
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -31,6 +42,8 @@ import org.springframework.transaction.annotation.Transactional;
 /** 入账、预冻结和消息落在同一个本地事务里。TCC 的空回滚和悬挂由栅栏挡住。类不是 final，事务代理要生成子类。 */
 @Service
 public class LedgerServiceImpl implements LedgerService {
+
+  private static final SecureRandom RANDOM = new SecureRandom();
 
   private final FreezeMapper freezeMapper;
 
@@ -159,6 +172,7 @@ public class LedgerServiceImpl implements LedgerService {
     JournalEntity journal = new JournalEntity();
     journal.setTraceId(command.traceId());
     journal.setReference(command.reference());
+    journal.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
     journalMapper.insert(journal);
     for (Posting posting : command.postings()) {
       PostingEntity row = new PostingEntity();
@@ -204,6 +218,90 @@ public class LedgerServiceImpl implements LedgerService {
     if (!Abac.permits(actor, balances.owner(accountId, currency))) {
       throw new BusinessException(ErrorCode.FORBIDDEN, accountId);
     }
+  }
+
+  /** 开立零余额账户。币种和 scale 用金额规则校验。重复开户不改已有余额。 */
+  @Override
+  @Transactional
+  public void openAccount(OpenAccount request) {
+    if (request == null) {
+      throw new IllegalArgumentException("request");
+    }
+    Ids.required(request.accountId(), "accountId");
+    Ids.required(request.ownerUserId(), "ownerUserId");
+    Money scale = new Money(0, request.scale(), request.currency());
+    Integer existing = jdbc.queryForObject(
+        "SELECT COUNT(*) FROM ledger_account WHERE account_id = ? AND currency = ?",
+        Integer.class,
+        request.accountId(),
+        scale.currency());
+    if (existing != null && existing > 0) {
+      return;
+    }
+    try {
+      jdbc.update(
+          "INSERT INTO ledger_account (id, account_id, currency, available, frozen, scale, version, owner_user_id) VALUES (?, ?, ?, 0, 0, ?, 0, ?)",
+          nextId(),
+          request.accountId(),
+          scale.currency(),
+          scale.scale(),
+          request.ownerUserId());
+    } catch (DataIntegrityViolationException exception) {
+      return;
+    }
+  }
+
+  /** 列出这个归属人的全部币种余额。 */
+  @Override
+  public List<AccountBalance> balances(String ownerUserId) {
+    Ids.required(ownerUserId, "ownerUserId");
+    return jdbc.query(
+        "SELECT account_id, currency, available, frozen, scale FROM ledger_account WHERE owner_user_id = ? ORDER BY currency",
+        (rs, row) -> new AccountBalance(rs.getString(1), rs.getString(2), rs.getLong(3), rs.getLong(4), rs.getInt(5)),
+        ownerUserId);
+  }
+
+  /** from、to 是 UTC 的 ISO-8601 时间。side 只接受 DEBIT 或 CREDIT。 */
+  @Override
+  public List<StatementLine> statements(String ownerUserId, String from, String to, String side) {
+    Ids.required(ownerUserId, "ownerUserId");
+    String wanted = side == null || side.isBlank() ? null : side.trim();
+    if (wanted != null && !"DEBIT".equals(wanted) && !"CREDIT".equals(wanted)) {
+      throw new IllegalArgumentException("side");
+    }
+    return jdbc.query(
+        """
+        SELECT j.reference, p.account_id, p.side, p.minor_units, p.scale, p.currency, j.created_at
+        FROM ledger_posting p
+        JOIN ledger_journal j ON j.id = p.journal_id
+        JOIN ledger_account a ON a.account_id = p.account_id AND a.currency = p.currency
+        WHERE a.owner_user_id = ?
+          AND (? IS NULL OR j.created_at >= ?)
+          AND (? IS NULL OR j.created_at < ?)
+          AND (? IS NULL OR p.side = ?)
+        ORDER BY j.created_at, p.id
+        """,
+        (rs, row) -> new StatementLine(
+            rs.getString(1),
+            rs.getString(2),
+            rs.getString(3),
+            rs.getLong(4),
+            rs.getInt(5),
+            rs.getString(6),
+            rs.getTimestamp(7) == null ? null : rs.getTimestamp(7).toInstant().toString()),
+        ownerUserId,
+        from,
+        from,
+        to,
+        to,
+        wanted,
+        wanted);
+  }
+
+  /** 正的随机主键。冲突时由调用方再试。 */
+  private static long nextId() {
+    long value = RANDOM.nextLong() & Long.MAX_VALUE;
+    return value == 0 ? 1 : value;
   }
 
   /** 按业务单号找冻结。没有时返回 null。 */

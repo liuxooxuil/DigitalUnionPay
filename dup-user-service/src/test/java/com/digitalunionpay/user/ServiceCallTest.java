@@ -1,6 +1,7 @@
 package com.digitalunionpay.user;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -51,7 +52,7 @@ class ServiceCallTest {
         .andExpect(jsonPath("$.message").value("signature"));
   }
 
-  /** 签名正确时仍到达未实现的端口。 */
+  /** 签名正确时到达出入金检查。未知用户返回 false。 */
   @Test
   void signedCallReachesThePort() throws Exception {
     String path = "/internal/users/user-1/funding-allowed";
@@ -62,7 +63,8 @@ class ServiceCallTest {
             .header(ServiceCall.TIME, timestamp)
             .header(ServiceCall.NONCE, nonce)
             .header(ServiceCall.SIGN, sign))
-        .andExpect(status().is(501));
+        .andExpect(status().isOk())
+        .andExpect(content().string("false"));
   }
 
   /** 同一个 nonce 再用一次按重放拒绝。 */
@@ -76,7 +78,7 @@ class ServiceCallTest {
             .header(ServiceCall.TIME, timestamp)
             .header(ServiceCall.NONCE, nonce)
             .header(ServiceCall.SIGN, sign))
-        .andExpect(status().is(501));
+        .andExpect(status().isOk());
     mvc.perform(get(path)
             .header(ServiceCall.TIME, timestamp)
             .header(ServiceCall.NONCE, nonce)

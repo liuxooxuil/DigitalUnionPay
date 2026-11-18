@@ -16,7 +16,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** 除登录和健康检查外，内部调用要带服务签名。关闭时直接放行。 */
+/** 除注册、登录和健康检查外，内部调用要带服务签名。关闭时直接放行。 */
 final class ServiceSignatureFilter extends OncePerRequestFilter {
 
   private final ServiceCall calls;
@@ -56,13 +56,19 @@ final class ServiceSignatureFilter extends OncePerRequestFilter {
     chain.doFilter(new CachedBodyRequest(request, body), response);
   }
 
-  /** 登录由人发起，不要求服务签名。 */
+  /** 注册和登录由人发起，不要求服务签名。 */
   private static boolean open(HttpServletRequest request) {
     String path = RequestPaths.of(request);
     if (path.startsWith("/actuator/") || "/actuator".equals(path) || "/error".equals(path)) {
       return true;
     }
-    return "POST".equals(request.getMethod()) && AuthPaths.LOGIN.equals(path);
+    return "POST".equals(request.getMethod())
+        && (AuthPaths.REGISTER.equals(path)
+            || AuthPaths.LOGIN.equals(path)
+            || AuthPaths.VERIFICATION_CODES.equals(path)
+            || AuthPaths.LOGIN_CODE.equals(path)
+            || AuthPaths.LOGIN_BIOMETRIC.equals(path)
+            || AuthPaths.BIOMETRIC_CHALLENGES.equals(path));
   }
 
   /** 过滤器读过的报文体再提供给控制器。 */

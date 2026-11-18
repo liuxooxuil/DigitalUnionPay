@@ -66,7 +66,15 @@ class AccessSecurity {
         return;
       }
       auth.requestMatchers("/error", "/actuator", "/actuator/**").permitAll();
-      auth.requestMatchers(HttpMethod.POST, AuthPaths.LOGIN, AuthPaths.ACCESS).permitAll();
+      auth.requestMatchers(
+          HttpMethod.POST,
+          AuthPaths.REGISTER,
+          AuthPaths.LOGIN,
+          AuthPaths.ACCESS,
+          AuthPaths.VERIFICATION_CODES,
+          AuthPaths.LOGIN_CODE,
+          AuthPaths.LOGIN_BIOMETRIC,
+          AuthPaths.BIOMETRIC_CHALLENGES).permitAll();
       auth.anyRequest().access(new AccessAuthorizer());
     });
     return http.build();

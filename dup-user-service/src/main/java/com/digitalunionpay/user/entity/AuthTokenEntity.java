@@ -18,6 +18,18 @@ public class AuthTokenEntity {
 
   private LocalDateTime expiresAt;
 
+  private String deviceId;
+
+  private String deviceName;
+
+  private String clientIp;
+
+  private String locationKey;
+
+  private LocalDateTime lastSeenAt;
+
+  private LocalDateTime revokedAt;
+
   public Long getId() {
     return id;
   }
@@ -48,5 +60,53 @@ public class AuthTokenEntity {
 
   public void setExpiresAt(LocalDateTime expiresAt) {
     this.expiresAt = expiresAt;
+  }
+
+  public String getDeviceId() {
+    return deviceId;
+  }
+
+  public void setDeviceId(String deviceId) {
+    this.deviceId = deviceId;
+  }
+
+  public String getDeviceName() {
+    return deviceName;
+  }
+
+  public void setDeviceName(String deviceName) {
+    this.deviceName = deviceName;
+  }
+
+  public String getClientIp() {
+    return clientIp;
+  }
+
+  public void setClientIp(String clientIp) {
+    this.clientIp = clientIp;
+  }
+
+  public String getLocationKey() {
+    return locationKey;
+  }
+
+  public void setLocationKey(String locationKey) {
+    this.locationKey = locationKey;
+  }
+
+  public LocalDateTime getLastSeenAt() {
+    return lastSeenAt;
+  }
+
+  public void setLastSeenAt(LocalDateTime lastSeenAt) {
+    this.lastSeenAt = lastSeenAt;
+  }
+
+  public LocalDateTime getRevokedAt() {
+    return revokedAt;
+  }
+
+  public void setRevokedAt(LocalDateTime revokedAt) {
+    this.revokedAt = revokedAt;
   }
 }

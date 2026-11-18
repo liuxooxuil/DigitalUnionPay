@@ -17,6 +17,24 @@ mybatis-plus:
       id-type: assign_id
 server:
   port: 8081
+dup:
+  auth:
+    idle-hours: ${DUP_AUTH_IDLE_HOURS:2}
+    session-hours: ${DUP_AUTH_SESSION_HOURS:12}
+    max-devices: ${DUP_AUTH_MAX_DEVICES:5}
+    sms-minutes: ${DUP_AUTH_SMS_MINUTES:5}
+    email-minutes: ${DUP_AUTH_EMAIL_MINUTES:10}
+    sms-daily-limit: ${DUP_AUTH_SMS_DAILY_LIMIT:10}
+    register-ip-limit: ${DUP_AUTH_REGISTER_IP_LIMIT:5}
+    lock-failures: ${DUP_AUTH_LOCK_FAILURES:5}
+    lock-minutes: ${DUP_AUTH_LOCK_MINUTES:30}
+  kyc:
+    dir: ${DUP_KYC_DIR:}
+    pass-threshold: ${DUP_KYC_PASS_THRESHOLD:80}
+    rfi-days: ${DUP_KYC_RFI_DAYS:7}
+    liveness-secret: "${DUP_KYC_LIVENESS_SECRET:DigitalUnionPayLivenessKey!!!!}"
+  airwallex:
+    base-url: ${AIRWALLEX_BASE_URL:}
 management:
   endpoints:
     web:

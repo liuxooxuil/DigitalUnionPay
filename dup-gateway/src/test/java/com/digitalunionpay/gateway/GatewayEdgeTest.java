@@ -125,6 +125,32 @@ class GatewayEdgeTest {
         .andExpect(jsonPath("$.message").value("external"));
   }
 
+  /** 注册不要求边缘签名。用户服务没启动时返回不可用，而不是注册成功。 */
+  @Test
+  void registerFallsBackWhenUserServiceIsDown() throws Exception {
+    mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"a\",\"password\":\"secret-pass\"}"))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.code").value("UNAVAILABLE"));
+  }
+
+  /** 验证码不要求边缘签名。用户服务没启动时返回不可用。 */
+  @Test
+  void verificationCodeFallsBackWhenUserServiceIsDown() throws Exception {
+    mvc.perform(post("/api/auth/verification-codes").contentType(MediaType.APPLICATION_JSON).content("{}"))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.code").value("UNAVAILABLE"));
+  }
+
+  /** 客户路径按内部权限判断，用户服务没启动时返回不可用。 */
+  @Test
+  void customerPathUsesTheInternalGrant() throws Exception {
+    String token = token("user-me", "GET /internal/users/**");
+    mvc.perform(signed(get("/api/users/me"), "GET", "/api/users/me", new byte[0], "nonce-me")
+            .header("Authorization", "Bearer " + token))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.code").value("UNAVAILABLE"));
+  }
+
   /** 登录不要求边缘签名。用户服务没启动时返回不可用，而不是登录成功。 */
   @Test
   void loginFallsBackWhenUserServiceIsDown() throws Exception {

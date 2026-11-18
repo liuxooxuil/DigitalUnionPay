@@ -21,6 +21,10 @@
     </dependency>
     <dependency>
       <groupId>com.digitalunionpay</groupId>
+      <artifactId>dup-ledger-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.digitalunionpay</groupId>
       <artifactId>dup-service-support</artifactId>
     </dependency>
     <dependency>

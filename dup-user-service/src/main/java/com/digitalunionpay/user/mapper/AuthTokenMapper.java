@@ -9,6 +9,9 @@ import org.apache.ibatis.annotations.Select;
 public interface AuthTokenMapper extends BaseMapper<AuthTokenEntity> {
 
   /** 按 token 摘要查找。没有时返回 null。 */
-  @Select("SELECT id, token_hash, user_id, expires_at FROM auth_token WHERE token_hash = #{tokenHash}")
+  @Select("""
+      SELECT id, token_hash, user_id, expires_at, device_id, device_name, client_ip, location_key, last_seen_at, revoked_at
+      FROM auth_token WHERE token_hash = #{tokenHash}
+      """)
   AuthTokenEntity findByHash(@Param("tokenHash") String tokenHash);
 }
